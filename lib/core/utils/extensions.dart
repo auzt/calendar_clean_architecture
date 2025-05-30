@@ -1,4 +1,7 @@
 // lib/core/utils/extensions.dart
+import 'package:intl/intl.dart';
+import 'validators.dart';
+
 extension DateTimeExtension on DateTime {
   bool get isToday {
     final now = DateTime.now();
@@ -32,7 +35,7 @@ extension DateTimeExtension on DateTime {
     final difference = now.difference(this);
 
     if (difference.inDays > 7) {
-      return AppDateUtils.formatDisplayDate(this);
+      return DateFormat('EEE, d MMM yyyy', 'id_ID').format(this);
     } else if (difference.inDays > 0) {
       return '${difference.inDays} hari lalu';
     } else if (difference.inHours > 0) {

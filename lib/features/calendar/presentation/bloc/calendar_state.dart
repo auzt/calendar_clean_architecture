@@ -1,6 +1,6 @@
 // lib/features/calendar/presentation/bloc/calendar_state.dart
 import 'package:equatable/equatable.dart';
-import '../../domain/entities/calendar_event.dart';
+import '../../domain/entities/calendar_event.dart' as domain;
 
 abstract class CalendarState extends Equatable {
   const CalendarState();
@@ -14,7 +14,7 @@ class CalendarInitial extends CalendarState {}
 class CalendarLoading extends CalendarState {}
 
 class CalendarLoaded extends CalendarState {
-  final List<CalendarEvent> events;
+  final List<domain.CalendarEvent> events;
   final DateTime? lastSyncTime;
   final bool isGoogleAuthenticated;
 
@@ -28,7 +28,7 @@ class CalendarLoaded extends CalendarState {
   List<Object?> get props => [events, lastSyncTime, isGoogleAuthenticated];
 
   CalendarLoaded copyWith({
-    List<CalendarEvent>? events,
+    List<domain.CalendarEvent>? events,
     DateTime? lastSyncTime,
     bool? isGoogleAuthenticated,
   }) {
@@ -57,7 +57,7 @@ class CalendarError extends CalendarState {
 }
 
 class CalendarSyncing extends CalendarState {
-  final List<CalendarEvent> currentEvents;
+  final List<domain.CalendarEvent> currentEvents;
 
   const CalendarSyncing(this.currentEvents);
 
@@ -66,7 +66,7 @@ class CalendarSyncing extends CalendarState {
 }
 
 class EventCreated extends CalendarState {
-  final CalendarEvent event;
+  final domain.CalendarEvent event;
 
   const EventCreated(this.event);
 
@@ -75,7 +75,7 @@ class EventCreated extends CalendarState {
 }
 
 class EventUpdated extends CalendarState {
-  final CalendarEvent event;
+  final domain.CalendarEvent event;
 
   const EventUpdated(this.event);
 

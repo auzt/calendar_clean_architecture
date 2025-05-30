@@ -1,6 +1,6 @@
 // lib/features/calendar/presentation/bloc/calendar_event.dart
 import 'package:equatable/equatable.dart';
-import '../../domain/entities/calendar_event.dart';
+import '../../domain/entities/calendar_event.dart' as domain;
 import '../../domain/entities/calendar_date_range.dart';
 
 abstract class CalendarEvent extends Equatable {
@@ -34,7 +34,7 @@ class LoadEventsForDate extends CalendarEvent {
 }
 
 class CreateEvent extends CalendarEvent {
-  final CalendarEvent event;
+  final domain.CalendarEvent event;
 
   const CreateEvent(this.event);
 
@@ -43,7 +43,7 @@ class CreateEvent extends CalendarEvent {
 }
 
 class UpdateEvent extends CalendarEvent {
-  final CalendarEvent event;
+  final domain.CalendarEvent event;
 
   const UpdateEvent(this.event);
 

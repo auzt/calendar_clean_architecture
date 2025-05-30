@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/error/error_handler.dart';
+import '../../domain/entities/calendar_event.dart' as domain;
 import '../../domain/usecases/calendar_usecases.dart';
 import 'calendar_event.dart';
 import 'calendar_state.dart';

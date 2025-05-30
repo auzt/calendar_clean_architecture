@@ -17,7 +17,6 @@ dependencies:
   
   # Network & API
   dio: ^5.3.2
-  retrofit: ^4.0.3
   json_annotation: ^4.8.1
   
   # Google Calendar Integration
@@ -28,7 +27,6 @@ dependencies:
   # Local Storage
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  path_provider: ^2.1.1
   
   # Dependency Injection
   get_it: ^7.6.4
@@ -40,11 +38,9 @@ dependencies:
   intl: ^0.19.0
   uuid: ^4.1.0
   connectivity_plus: ^5.0.1
-  permission_handler: ^11.0.1
   
   # UI
   cupertino_icons: ^1.0.8
-  cached_network_image: ^3.3.0
 
 dev_dependencies:
   flutter_test:
@@ -53,26 +49,8 @@ dev_dependencies:
   
   # Code Generation
   build_runner: ^2.4.7
-  retrofit_generator: ^8.0.4
   json_serializable: ^6.7.1
   hive_generator: ^2.0.1
 
 flutter:
   uses-material-design: true
-
-# build.yaml
-targets:
-  $default:
-    builders:
-      json_serializable:
-        options:
-          # Options for json_serializable
-          any_map: false
-          checked: false
-          create_factory: true
-          create_to_json: true
-          disallow_unrecognized_keys: false
-          explicit_to_json: false
-          field_rename: none
-          ignore_unannotated: false
-          include_if_null: true
