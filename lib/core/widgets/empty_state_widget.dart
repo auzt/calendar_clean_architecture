@@ -9,13 +9,13 @@ class EmptyStateWidget extends StatelessWidget {
   final String? imagePath;
 
   const EmptyStateWidget({
-    Key? key,
+    super.key,
     required this.title,
     this.subtitle,
     this.icon,
     this.action,
     this.imagePath,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

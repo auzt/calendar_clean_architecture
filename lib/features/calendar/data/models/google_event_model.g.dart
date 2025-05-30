@@ -1,0 +1,122 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'google_event_model.dart';
+
+// **************************************************************************
+// JsonSerializableGenerator
+// **************************************************************************
+
+GoogleEventModel _$GoogleEventModelFromJson(Map<String, dynamic> json) =>
+    GoogleEventModel(
+      id: json['id'] as String?,
+      summary: json['summary'] as String?,
+      description: json['description'] as String?,
+      location: json['location'] as String?,
+      start: json['start'] == null
+          ? null
+          : GoogleEventDateTime.fromJson(json['start'] as Map<String, dynamic>),
+      end: json['end'] == null
+          ? null
+          : GoogleEventDateTime.fromJson(json['end'] as Map<String, dynamic>),
+      attendees: (json['attendees'] as List<dynamic>?)
+          ?.map((e) => GoogleEventAttendee.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      recurrence: (json['recurrence'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
+      created: json['created'] == null
+          ? null
+          : GoogleEventDateTime.fromJson(
+              json['created'] as Map<String, dynamic>),
+      updated: json['updated'] == null
+          ? null
+          : GoogleEventDateTime.fromJson(
+              json['updated'] as Map<String, dynamic>),
+      colorId: json['colorId'] as String?,
+      creator: json['creator'] == null
+          ? null
+          : GoogleEventCreator.fromJson(
+              json['creator'] as Map<String, dynamic>),
+    );
+
+Map<String, dynamic> _$GoogleEventModelToJson(GoogleEventModel instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'summary': instance.summary,
+      'description': instance.description,
+      'location': instance.location,
+      'start': instance.start,
+      'end': instance.end,
+      'attendees': instance.attendees,
+      'recurrence': instance.recurrence,
+      'created': instance.created,
+      'updated': instance.updated,
+      'colorId': instance.colorId,
+      'creator': instance.creator,
+    };
+
+GoogleEventDateTime _$GoogleEventDateTimeFromJson(Map<String, dynamic> json) =>
+    GoogleEventDateTime(
+      date: json['date'] as String?,
+      dateTime: json['dateTime'] as String?,
+      timeZone: json['timeZone'] as String?,
+    );
+
+Map<String, dynamic> _$GoogleEventDateTimeToJson(
+        GoogleEventDateTime instance) =>
+    <String, dynamic>{
+      'date': instance.date,
+      'dateTime': instance.dateTime,
+      'timeZone': instance.timeZone,
+    };
+
+GoogleEventAttendee _$GoogleEventAttendeeFromJson(Map<String, dynamic> json) =>
+    GoogleEventAttendee(
+      email: json['email'] as String?,
+      displayName: json['displayName'] as String?,
+      responseStatus: json['responseStatus'] as String?,
+    );
+
+Map<String, dynamic> _$GoogleEventAttendeeToJson(
+        GoogleEventAttendee instance) =>
+    <String, dynamic>{
+      'email': instance.email,
+      'displayName': instance.displayName,
+      'responseStatus': instance.responseStatus,
+    };
+
+GoogleEventCreator _$GoogleEventCreatorFromJson(Map<String, dynamic> json) =>
+    GoogleEventCreator(
+      email: json['email'] as String?,
+      displayName: json['displayName'] as String?,
+    );
+
+Map<String, dynamic> _$GoogleEventCreatorToJson(GoogleEventCreator instance) =>
+    <String, dynamic>{
+      'email': instance.email,
+      'displayName': instance.displayName,
+    };
+
+GoogleCalendarResponse _$GoogleCalendarResponseFromJson(
+        Map<String, dynamic> json) =>
+    GoogleCalendarResponse(
+      kind: json['kind'] as String?,
+      etag: json['etag'] as String?,
+      summary: json['summary'] as String?,
+      description: json['description'] as String?,
+      items: (json['items'] as List<dynamic>?)
+          ?.map((e) => GoogleEventModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      nextPageToken: json['nextPageToken'] as String?,
+    );
+
+Map<String, dynamic> _$GoogleCalendarResponseToJson(
+        GoogleCalendarResponse instance) =>
+    <String, dynamic>{
+      'kind': instance.kind,
+      'etag': instance.etag,
+      'summary': instance.summary,
+      'description': instance.description,
+      'items': instance.items,
+      'nextPageToken': instance.nextPageToken,
+    };

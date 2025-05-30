@@ -200,12 +200,12 @@ class CalendarRepositoryImpl implements CalendarRepository {
   ) async {
     try {
       if (!await networkInfo.isConnected) {
-        return Left(const NetworkFailure('Tidak ada koneksi internet'));
+        return const Left(NetworkFailure('Tidak ada koneksi internet'));
       }
 
       final isAuthenticated = await remoteDataSource.isAuthenticated();
       if (!isAuthenticated) {
-        return Left(const AuthFailure('Belum login ke Google Calendar'));
+        return const Left(AuthFailure('Belum login ke Google Calendar'));
       }
 
       // Ambil events dari Google Calendar

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../domain/entities/calendar_event.dart';
-import '../../domain/entities/calendar_date_range.dart';
 import '../bloc/calendar_bloc.dart';
 import '../bloc/calendar_event.dart' as calendar_events;
 import '../bloc/calendar_state.dart';
@@ -13,7 +12,7 @@ import 'add_event_page.dart';
 class DayViewPage extends StatefulWidget {
   final DateTime initialDate;
 
-  const DayViewPage({Key? key, required this.initialDate}) : super(key: key);
+  const DayViewPage({super.key, required this.initialDate});
 
   @override
   State<DayViewPage> createState() => _DayViewPageState();
@@ -163,8 +162,8 @@ class _DayViewPageState extends State<DayViewPage> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _navigateToAddEvent(),
-        child: const Icon(Icons.add),
         tooltip: 'Tambah Event',
+        child: const Icon(Icons.add),
       ),
     );
   }

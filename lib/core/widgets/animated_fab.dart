@@ -8,12 +8,12 @@ class AnimatedFab extends StatefulWidget {
   final bool isVisible;
 
   const AnimatedFab({
-    Key? key,
+    super.key,
     required this.onPressed,
     required this.tooltip,
     this.icon = Icons.add,
     this.isVisible = true,
-  }) : super(key: key);
+  });
 
   @override
   State<AnimatedFab> createState() => _AnimatedFabState();

@@ -12,7 +12,7 @@ import 'add_event_page.dart';
 import 'day_view_page.dart';
 
 class CalendarHomePage extends StatefulWidget {
-  const CalendarHomePage({Key? key}) : super(key: key);
+  const CalendarHomePage({super.key});
 
   @override
   State<CalendarHomePage> createState() => _CalendarHomePageState();
@@ -201,8 +201,8 @@ class _CalendarHomePageState extends State<CalendarHomePage> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _navigateToAddEvent(DateTime.now()),
-        child: const Icon(Icons.add),
         tooltip: 'Tambah Event',
+        child: const Icon(Icons.add),
       ),
     );
   }

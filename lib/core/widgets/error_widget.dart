@@ -7,11 +7,11 @@ class CustomErrorWidget extends StatelessWidget {
   final bool isNetworkError;
 
   const CustomErrorWidget({
-    Key? key,
+    super.key,
     required this.message,
     this.onRetry,
     this.isNetworkError = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

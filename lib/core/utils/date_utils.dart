@@ -3,7 +3,8 @@ import 'package:intl/intl.dart';
 
 class AppDateUtils {
   static String formatDisplayDate(DateTime date) {
-    return DateFormat('EEE, d MMM yyyy', 'id_ID').format(date);
+    // ✅ FIX: Hapus 'id_ID' locale
+    return DateFormat('EEE, d MMM yyyy').format(date);
   }
 
   static String formatTime(DateTime date) {
@@ -11,7 +12,8 @@ class AppDateUtils {
   }
 
   static String formatDateTime(DateTime date) {
-    return DateFormat('d MMM yyyy HH:mm', 'id_ID').format(date);
+    // ✅ FIX: Hapus 'id_ID' locale
+    return DateFormat('d MMM yyyy HH:mm').format(date);
   }
 
   static String formatApiDate(DateTime date) {

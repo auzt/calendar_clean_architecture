@@ -35,7 +35,8 @@ extension DateTimeExtension on DateTime {
     final difference = now.difference(this);
 
     if (difference.inDays > 7) {
-      return DateFormat('EEE, d MMM yyyy', 'id_ID').format(this);
+      // ✅ FIX: Removed 'id_ID' locale to fix LocaleDataException
+      return DateFormat('EEE, d MMM yyyy').format(this);
     } else if (difference.inDays > 0) {
       return '${difference.inDays} hari lalu';
     } else if (difference.inHours > 0) {

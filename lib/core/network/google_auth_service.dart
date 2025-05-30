@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as auth;
 import '../constants/google_calendar_constants.dart';
 import '../error/exceptions.dart';
+import 'package:http/http.dart' as http;
 
 class GoogleAuthService {
   static GoogleAuthService? _instance;
@@ -73,6 +74,7 @@ class GoogleAuthService {
     }
   }
 
+  // Ganti method _createAuthClient():
   Future<void> _createAuthClient() async {
     if (_currentUser == null) return;
 
@@ -90,10 +92,9 @@ class GoogleAuthService {
         GoogleCalendarConstants.scopes,
       );
 
-      _authClient = auth.authenticatedClient(
-        auth.ClientId('', ''),
-        credentials,
-      );
+      // Gunakan http.Client() sebagai base client
+      final baseClient = http.Client();
+      _authClient = auth.authenticatedClient(baseClient, credentials);
     } catch (e) {
       throw AuthException('Gagal membuat auth client: ${e.toString()}');
     }

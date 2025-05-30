@@ -7,10 +7,10 @@ class DatePickerWidget extends StatefulWidget {
   final String title;
 
   const DatePickerWidget({
-    Key? key,
+    super.key,
     required this.initialDate,
     this.title = 'Pilih Tanggal',
-  }) : super(key: key);
+  });
 
   @override
   State<DatePickerWidget> createState() => _DatePickerWidgetState();

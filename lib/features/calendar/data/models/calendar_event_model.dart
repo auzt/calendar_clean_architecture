@@ -87,22 +87,22 @@ class CalendarEventModel extends CalendarEvent {
     this.createdBy,
     this.additionalData,
   }) : super(
-         id: id,
-         title: title,
-         startTime: startTime,
-         endTime: endTime,
-         description: description,
-         location: location,
-         isAllDay: isAllDay,
-         color: color,
-         googleEventId: googleEventId,
-         attendees: attendees,
-         recurrence: recurrence,
-         isFromGoogle: isFromGoogle,
-         lastModified: lastModified,
-         createdBy: createdBy,
-         additionalData: additionalData,
-       );
+          id: id,
+          title: title,
+          startTime: startTime,
+          endTime: endTime,
+          description: description,
+          location: location,
+          isAllDay: isAllDay,
+          color: color,
+          googleEventId: googleEventId,
+          attendees: attendees,
+          recurrence: recurrence,
+          isFromGoogle: isFromGoogle,
+          lastModified: lastModified,
+          createdBy: createdBy,
+          additionalData: additionalData,
+        );
 
   factory CalendarEventModel.fromJson(Map<String, dynamic> json) =>
       _$CalendarEventModelFromJson(json);
@@ -154,7 +154,8 @@ class CalendarEventModel extends CalendarEvent {
   }
 
   static int _colorToJson(Color color) {
-    return color.value;
+    return color.value; // Keep for backward compatibility
+    // TODO: Update to color.toARGB32() when minimum Flutter version is 3.19+
   }
 
   @override

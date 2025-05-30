@@ -12,11 +12,11 @@ class MonthViewWidget extends StatelessWidget {
   final Function(DateTime)? onDateLongPress;
 
   const MonthViewWidget({
-    Key? key,
+    super.key,
     required this.month,
     required this.onDateTap,
     this.onDateLongPress,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

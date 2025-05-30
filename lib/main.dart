@@ -5,6 +5,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+// ✅ ADD: Import Color Adapter
+import 'core/adapters/color_adapter.dart';
 import 'core/network/network_info.dart';
 import 'features/calendar/data/datasources/google_calendar_remote_datasource.dart';
 import 'features/calendar/data/datasources/local_calendar_datasource.dart';
@@ -28,9 +30,21 @@ void main() async {
   // Initialize Hive
   await Hive.initFlutter();
 
-  // Register Hive adapters
-  if (!Hive.isAdapterRegistered(0)) {
-    Hive.registerAdapter(CalendarEventModelAdapter());
+  try {
+    // ✅ CRITICAL: Register Color adapter FIRST (typeId = 1)
+    if (!Hive.isAdapterRegistered(1)) {
+      Hive.registerAdapter(ColorAdapter());
+      print('✅ ColorAdapter registered successfully');
+    }
+
+    // ✅ Register CalendarEventModel adapter (typeId = 0)
+    if (!Hive.isAdapterRegistered(0)) {
+      Hive.registerAdapter(CalendarEventModelAdapter());
+      print('✅ CalendarEventModelAdapter registered successfully');
+    }
+  } catch (e) {
+    print('⚠️ Adapter registration error: $e');
+    // Continue anyway - app might still work
   }
 
   runApp(MyApp());

@@ -40,38 +40,48 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         forceRefresh: event.forceRefresh,
       );
 
-      result.fold(
-        (failure) => emit(
-          CalendarError(
-            message: failure.message,
-            isNetworkError: failure is NetworkFailure,
-            isAuthError: failure is AuthFailure,
-          ),
-        ),
+      // ✅ FIX: Handle async operations sequentially
+      await result.fold(
+        (failure) async {
+          if (!emit.isDone) {
+            emit(
+              CalendarError(
+                message: failure.message,
+                isNetworkError: failure is NetworkFailure,
+                isAuthError: failure is AuthFailure,
+              ),
+            );
+          }
+        },
         (events) async {
-          // Get auth status and last sync time
-          final authResult =
-              await useCases.authenticateGoogleCalendar.repository
-                  .isGoogleCalendarAuthenticated();
+          // Get auth status and last sync time BEFORE emitting
+          final authResult = await useCases
+              .authenticateGoogleCalendar.repository
+              .isGoogleCalendarAuthenticated();
           final isAuthenticated = authResult.fold((l) => false, (r) => r);
 
-          final syncTimeResult =
-              await useCases.authenticateGoogleCalendar.repository
-                  .getLastSyncTime();
+          final syncTimeResult = await useCases
+              .authenticateGoogleCalendar.repository
+              .getLastSyncTime();
           final lastSyncTime = syncTimeResult.fold((l) => null, (r) => r);
 
-          emit(
-            CalendarLoaded(
-              events: events,
-              lastSyncTime: lastSyncTime,
-              isGoogleAuthenticated: isAuthenticated,
-            ),
-          );
+          // Check if emit is still valid before emitting
+          if (!emit.isDone) {
+            emit(
+              CalendarLoaded(
+                events: events,
+                lastSyncTime: lastSyncTime,
+                isGoogleAuthenticated: isAuthenticated,
+              ),
+            );
+          }
         },
       );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(CalendarError(message: 'Terjadi kesalahan: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(CalendarError(message: 'Terjadi kesalahan: ${e.toString()}'));
+      }
     }
   }
 
@@ -89,37 +99,46 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         forceRefresh: event.forceRefresh,
       );
 
-      result.fold(
-        (failure) => emit(
-          CalendarError(
-            message: failure.message,
-            isNetworkError: failure is NetworkFailure,
-            isAuthError: failure is AuthFailure,
-          ),
-        ),
+      // ✅ FIX: Handle async operations sequentially
+      await result.fold(
+        (failure) async {
+          if (!emit.isDone) {
+            emit(
+              CalendarError(
+                message: failure.message,
+                isNetworkError: failure is NetworkFailure,
+                isAuthError: failure is AuthFailure,
+              ),
+            );
+          }
+        },
         (events) async {
-          final authResult =
-              await useCases.authenticateGoogleCalendar.repository
-                  .isGoogleCalendarAuthenticated();
+          final authResult = await useCases
+              .authenticateGoogleCalendar.repository
+              .isGoogleCalendarAuthenticated();
           final isAuthenticated = authResult.fold((l) => false, (r) => r);
 
-          final syncTimeResult =
-              await useCases.authenticateGoogleCalendar.repository
-                  .getLastSyncTime();
+          final syncTimeResult = await useCases
+              .authenticateGoogleCalendar.repository
+              .getLastSyncTime();
           final lastSyncTime = syncTimeResult.fold((l) => null, (r) => r);
 
-          emit(
-            CalendarLoaded(
-              events: events,
-              lastSyncTime: lastSyncTime,
-              isGoogleAuthenticated: isAuthenticated,
-            ),
-          );
+          if (!emit.isDone) {
+            emit(
+              CalendarLoaded(
+                events: events,
+                lastSyncTime: lastSyncTime,
+                isGoogleAuthenticated: isAuthenticated,
+              ),
+            );
+          }
         },
       );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(CalendarError(message: 'Terjadi kesalahan: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(CalendarError(message: 'Terjadi kesalahan: ${e.toString()}'));
+      }
     }
   }
 
@@ -130,22 +149,37 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     try {
       final result = await useCases.createCalendarEvent(event.event);
 
-      result.fold((failure) => emit(CalendarError(message: failure.message)), (
-        createdEvent,
-      ) {
-        emit(EventCreated(createdEvent));
-        // Reload events to show the new one
-        if (state is CalendarLoaded) {
-          final currentState = state as CalendarLoaded;
-          final updatedEvents = [...currentState.events, createdEvent];
-          updatedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
+      result.fold(
+        (failure) {
+          if (!emit.isDone) {
+            emit(CalendarError(message: failure.message));
+          }
+        },
+        (createdEvent) {
+          if (!emit.isDone) {
+            emit(EventCreated(createdEvent));
 
-          emit(currentState.copyWith(events: updatedEvents));
-        }
-      });
+            // Update events list if currently loaded
+            if (state is CalendarLoaded) {
+              final currentState = state as CalendarLoaded;
+              final updatedEvents = <domain.CalendarEvent>[
+                ...currentState.events,
+                createdEvent
+              ];
+              updatedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
+
+              if (!emit.isDone) {
+                emit(currentState.copyWith(events: updatedEvents));
+              }
+            }
+          }
+        },
+      );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(CalendarError(message: 'Gagal membuat event: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(CalendarError(message: 'Gagal membuat event: ${e.toString()}'));
+      }
     }
   }
 
@@ -156,25 +190,37 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     try {
       final result = await useCases.updateCalendarEvent(event.event);
 
-      result.fold((failure) => emit(CalendarError(message: failure.message)), (
-        updatedEvent,
-      ) {
-        emit(EventUpdated(updatedEvent));
-        // Update the event in the current list
-        if (state is CalendarLoaded) {
-          final currentState = state as CalendarLoaded;
-          final updatedEvents =
-              currentState.events.map((e) {
+      result.fold(
+        (failure) {
+          if (!emit.isDone) {
+            emit(CalendarError(message: failure.message));
+          }
+        },
+        (updatedEvent) {
+          if (!emit.isDone) {
+            emit(EventUpdated(updatedEvent));
+
+            // Update the event in the current list
+            if (state is CalendarLoaded) {
+              final currentState = state as CalendarLoaded;
+              final updatedEvents =
+                  currentState.events.map<domain.CalendarEvent>((e) {
                 return e.id == updatedEvent.id ? updatedEvent : e;
               }).toList();
-          updatedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
+              updatedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
 
-          emit(currentState.copyWith(events: updatedEvents));
-        }
-      });
+              if (!emit.isDone) {
+                emit(currentState.copyWith(events: updatedEvents));
+              }
+            }
+          }
+        },
+      );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(CalendarError(message: 'Gagal update event: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(CalendarError(message: 'Gagal update event: ${e.toString()}'));
+      }
     }
   }
 
@@ -185,22 +231,35 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     try {
       final result = await useCases.deleteCalendarEvent(event.eventId);
 
-      result.fold((failure) => emit(CalendarError(message: failure.message)), (
-        success,
-      ) {
-        emit(EventDeleted(event.eventId));
-        // Remove the event from the current list
-        if (state is CalendarLoaded) {
-          final currentState = state as CalendarLoaded;
-          final updatedEvents =
-              currentState.events.where((e) => e.id != event.eventId).toList();
+      result.fold(
+        (failure) {
+          if (!emit.isDone) {
+            emit(CalendarError(message: failure.message));
+          }
+        },
+        (success) {
+          if (!emit.isDone) {
+            emit(EventDeleted(event.eventId));
 
-          emit(currentState.copyWith(events: updatedEvents));
-        }
-      });
+            // Remove the event from the current list
+            if (state is CalendarLoaded) {
+              final currentState = state as CalendarLoaded;
+              final updatedEvents = currentState.events
+                  .where((e) => e.id != event.eventId)
+                  .toList();
+
+              if (!emit.isDone) {
+                emit(currentState.copyWith(events: updatedEvents));
+              }
+            }
+          }
+        },
+      );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(CalendarError(message: 'Gagal menghapus event: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(CalendarError(message: 'Gagal menghapus event: ${e.toString()}'));
+      }
     }
   }
 
@@ -219,37 +278,46 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
 
       final result = await useCases.syncGoogleCalendar(event.dateRange);
 
-      result.fold(
-        (failure) => emit(
-          CalendarError(
-            message: failure.message,
-            isNetworkError: failure is NetworkFailure,
-            isAuthError: failure is AuthFailure,
-          ),
-        ),
+      // ✅ FIX: Handle async operations sequentially
+      await result.fold(
+        (failure) async {
+          if (!emit.isDone) {
+            emit(
+              CalendarError(
+                message: failure.message,
+                isNetworkError: failure is NetworkFailure,
+                isAuthError: failure is AuthFailure,
+              ),
+            );
+          }
+        },
         (events) async {
-          final authResult =
-              await useCases.authenticateGoogleCalendar.repository
-                  .isGoogleCalendarAuthenticated();
+          final authResult = await useCases
+              .authenticateGoogleCalendar.repository
+              .isGoogleCalendarAuthenticated();
           final isAuthenticated = authResult.fold((l) => false, (r) => r);
 
-          final syncTimeResult =
-              await useCases.authenticateGoogleCalendar.repository
-                  .getLastSyncTime();
+          final syncTimeResult = await useCases
+              .authenticateGoogleCalendar.repository
+              .getLastSyncTime();
           final lastSyncTime = syncTimeResult.fold((l) => null, (r) => r);
 
-          emit(
-            CalendarLoaded(
-              events: events,
-              lastSyncTime: lastSyncTime,
-              isGoogleAuthenticated: isAuthenticated,
-            ),
-          );
+          if (!emit.isDone) {
+            emit(
+              CalendarLoaded(
+                events: events,
+                lastSyncTime: lastSyncTime,
+                isGoogleAuthenticated: isAuthenticated,
+              ),
+            );
+          }
         },
       );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(CalendarError(message: 'Gagal sinkronisasi: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(CalendarError(message: 'Gagal sinkronisasi: ${e.toString()}'));
+      }
     }
   }
 
@@ -260,18 +328,27 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     try {
       final result = await useCases.authenticateGoogleCalendar();
 
-      result.fold((failure) => emit(GoogleAuthFailed(failure.message)), (
-        success,
-      ) {
-        if (success) {
-          emit(GoogleAuthSuccess());
-        } else {
-          emit(const GoogleAuthFailed('Login gagal'));
-        }
-      });
+      result.fold(
+        (failure) {
+          if (!emit.isDone) {
+            emit(GoogleAuthFailed(failure.message));
+          }
+        },
+        (success) {
+          if (!emit.isDone) {
+            if (success) {
+              emit(GoogleAuthSuccess());
+            } else {
+              emit(const GoogleAuthFailed('Login gagal'));
+            }
+          }
+        },
+      );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(GoogleAuthFailed('Login error: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(GoogleAuthFailed('Login error: ${e.toString()}'));
+      }
     }
   }
 
@@ -280,21 +357,29 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     Emitter<CalendarState> emit,
   ) async {
     try {
-      final result =
-          await useCases.authenticateGoogleCalendar.repository
-              .signOutGoogleCalendar();
+      final result = await useCases.authenticateGoogleCalendar.repository
+          .signOutGoogleCalendar();
 
-      result.fold((failure) => emit(CalendarError(message: failure.message)), (
-        success,
-      ) {
-        if (success) {
-          emit(GoogleSignedOut());
-          emit(CalendarInitial());
-        }
-      });
+      result.fold(
+        (failure) {
+          if (!emit.isDone) {
+            emit(CalendarError(message: failure.message));
+          }
+        },
+        (success) {
+          if (!emit.isDone) {
+            if (success) {
+              emit(GoogleSignedOut());
+              emit(CalendarInitial());
+            }
+          }
+        },
+      );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(CalendarError(message: 'Logout error: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(CalendarError(message: 'Logout error: ${e.toString()}'));
+      }
     }
   }
 
@@ -303,18 +388,21 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     Emitter<CalendarState> emit,
   ) async {
     try {
-      final result =
-          await useCases.authenticateGoogleCalendar.repository
-              .isGoogleCalendarAuthenticated();
+      final result = await useCases.authenticateGoogleCalendar.repository
+          .isGoogleCalendarAuthenticated();
 
-      result.fold((failure) => {}, (isAuthenticated) {
-        if (state is CalendarLoaded) {
-          final currentState = state as CalendarLoaded;
-          emit(currentState.copyWith(isGoogleAuthenticated: isAuthenticated));
-        }
-      });
+      result.fold(
+        (failure) => {}, // Do nothing on failure for this check
+        (isAuthenticated) {
+          if (!emit.isDone && state is CalendarLoaded) {
+            final currentState = state as CalendarLoaded;
+            emit(currentState.copyWith(isGoogleAuthenticated: isAuthenticated));
+          }
+        },
+      );
     } catch (e) {
       ErrorHandler.logError(e);
+      // Silent fail for auth check
     }
   }
 
@@ -326,14 +414,23 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
       final result =
           await useCases.authenticateGoogleCalendar.repository.clearCache();
 
-      result.fold((failure) => emit(CalendarError(message: failure.message)), (
-        success,
-      ) {
-        emit(CalendarInitial());
-      });
+      result.fold(
+        (failure) {
+          if (!emit.isDone) {
+            emit(CalendarError(message: failure.message));
+          }
+        },
+        (success) {
+          if (!emit.isDone) {
+            emit(CalendarInitial());
+          }
+        },
+      );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(CalendarError(message: 'Gagal clear cache: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(CalendarError(message: 'Gagal clear cache: ${e.toString()}'));
+      }
     }
   }
 
@@ -344,25 +441,31 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     try {
       await _eventsSubscription?.cancel();
 
-      _eventsSubscription = useCases
-          .watchCalendarEvents(event.dateRange)
-          .listen(
-            (events) {
-              if (state is CalendarLoaded) {
-                final currentState = state as CalendarLoaded;
-                emit(currentState.copyWith(events: events));
-              } else {
-                emit(CalendarLoaded(events: events));
-              }
-            },
-            onError: (error) {
-              ErrorHandler.logError(error);
-              emit(CalendarError(message: 'Stream error: ${error.toString()}'));
-            },
-          );
+      _eventsSubscription =
+          useCases.watchCalendarEvents(event.dateRange).listen(
+        (events) {
+          // ✅ FIX: Check emit.isDone before emitting in stream callback
+          if (!emit.isDone) {
+            if (state is CalendarLoaded) {
+              final currentState = state as CalendarLoaded;
+              emit(currentState.copyWith(events: events));
+            } else {
+              emit(CalendarLoaded(events: events));
+            }
+          }
+        },
+        onError: (error) {
+          ErrorHandler.logError(error);
+          if (!emit.isDone) {
+            emit(CalendarError(message: 'Stream error: ${error.toString()}'));
+          }
+        },
+      );
     } catch (e) {
       ErrorHandler.logError(e);
-      emit(CalendarError(message: 'Watch events error: ${e.toString()}'));
+      if (!emit.isDone) {
+        emit(CalendarError(message: 'Watch events error: ${e.toString()}'));
+      }
     }
   }
 

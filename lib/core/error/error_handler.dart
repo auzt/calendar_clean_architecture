@@ -22,9 +22,7 @@ class ErrorHandler {
     } else if (error is ValidationException) {
       return ValidationFailure(error.message);
     } else {
-      return Failure(
-        'Terjadi kesalahan yang tidak diketahui: ${error.toString()}',
-      );
+      return const ServerFailure('Terjadi kesalahan yang tidak diketahui');
     }
   }
 

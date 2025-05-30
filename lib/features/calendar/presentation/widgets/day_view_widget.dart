@@ -11,13 +11,13 @@ class DayViewWidget extends StatefulWidget {
   final Function(CalendarEvent, DateTime)? onEventMove;
 
   const DayViewWidget({
-    Key? key,
+    super.key,
     required this.date,
     required this.events,
     required this.onEventTap,
     required this.onTimeSlotTap,
     this.onEventMove,
-  }) : super(key: key);
+  });
 
   @override
   State<DayViewWidget> createState() => _DayViewWidgetState();

@@ -1,4 +1,13 @@
 // lib/features/calendar/domain/usecases/calendar_usecases.dart
+import 'get_calendar_events.dart';
+import 'get_events_for_date.dart';
+import 'create_calendar_event.dart';
+import 'update_calendar_event.dart';
+import 'delete_calendar_event.dart';
+import 'sync_google_calendar.dart';
+import 'authenticate_google_calendar.dart';
+import 'watch_calendar_events.dart';
+
 class CalendarUseCases {
   final GetCalendarEvents getCalendarEvents;
   final GetEventsForDate getEventsForDate;

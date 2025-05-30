@@ -9,7 +9,6 @@ import '../network/network_info.dart';
 import '../../features/calendar/data/datasources/google_calendar_remote_datasource.dart';
 import '../../features/calendar/data/datasources/local_calendar_datasource.dart';
 import '../../features/calendar/data/repositories/calendar_repository_impl.dart';
-import '../../features/calendar/data/models/calendar_event_model.dart';
 import '../../features/calendar/domain/repositories/calendar_repository.dart';
 import '../../features/calendar/domain/usecases/calendar_usecases.dart';
 import '../../features/calendar/domain/usecases/get_calendar_events.dart';
@@ -85,8 +84,14 @@ Future<void> init() async {
 }
 
 Future<void> _initHive() async {
-  // Hive boxes will be opened in the datasource implementation
+  // Tunggu sampai adapter ter-generate
+  await Future.delayed(Duration.zero);
+
+  // Cek apakah adapter sudah ter-register
   if (!Hive.isAdapterRegistered(0)) {
-    Hive.registerAdapter(CalendarEventModelAdapter());
+    // Adapter akan tersedia setelah code generation
+    print(
+      'CalendarEventModelAdapter akan ter-register setelah code generation',
+    );
   }
 }

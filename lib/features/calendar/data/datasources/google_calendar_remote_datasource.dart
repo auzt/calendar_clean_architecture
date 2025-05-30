@@ -2,6 +2,7 @@
 import 'package:googleapis/calendar/v3.dart' as calendar;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as auth;
+import 'package:http/http.dart' as http;
 import '../../../../core/constants/google_calendar_constants.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/google_event_model.dart';
@@ -24,8 +25,8 @@ class GoogleCalendarRemoteDataSourceImpl
   calendar.CalendarApi? _calendarApi;
 
   GoogleCalendarRemoteDataSourceImpl({GoogleSignIn? googleSignIn})
-    : _googleSignIn =
-          googleSignIn ?? GoogleSignIn(scopes: GoogleCalendarConstants.scopes);
+      : _googleSignIn = googleSignIn ??
+            GoogleSignIn(scopes: GoogleCalendarConstants.scopes);
 
   @override
   Future<bool> authenticate() async {
@@ -37,6 +38,7 @@ class GoogleCalendarRemoteDataSourceImpl
 
       final GoogleSignInAuthentication authentication =
           await account.authentication;
+
       final auth.AccessCredentials credentials = auth.AccessCredentials(
         auth.AccessToken(
           'Bearer',
@@ -47,12 +49,11 @@ class GoogleCalendarRemoteDataSourceImpl
         GoogleCalendarConstants.scopes,
       );
 
-      final auth.AuthClient client = auth.authenticatedClient(
-        auth.ClientId('', ''),
-        credentials,
-      );
+      // ✅ FIX: Gunakan http.Client() sebagai base client
+      final httpClient = http.Client();
+      final authClient = auth.authenticatedClient(httpClient, credentials);
 
-      _calendarApi = calendar.CalendarApi(client);
+      _calendarApi = calendar.CalendarApi(authClient);
       return true;
     } catch (e) {
       throw AuthException('Gagal login ke Google Calendar: ${e.toString()}');

@@ -9,14 +9,12 @@ import '../bloc/calendar_bloc.dart';
 import '../bloc/calendar_event.dart' as calendar_events;
 import '../bloc/calendar_state.dart';
 import '../widgets/date_picker_widget.dart';
-import '../widgets/event_form_widget.dart';
 
 class AddEventPage extends StatefulWidget {
   final DateTime initialDate;
   final CalendarEvent? existingEvent;
 
-  const AddEventPage({Key? key, required this.initialDate, this.existingEvent})
-    : super(key: key);
+  const AddEventPage({super.key, required this.initialDate, this.existingEvent});
 
   @override
   State<AddEventPage> createState() => _AddEventPageState();

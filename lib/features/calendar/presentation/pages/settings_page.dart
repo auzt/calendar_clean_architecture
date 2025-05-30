@@ -6,7 +6,7 @@ import '../bloc/calendar_event.dart' as calendar_events;
 import '../bloc/calendar_state.dart';
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({Key? key}) : super(key: key);
+  const SettingsPage({super.key});
 
   @override
   Widget build(BuildContext context) {

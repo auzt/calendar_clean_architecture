@@ -9,11 +9,11 @@ class EventFormWidget extends StatefulWidget {
   final VoidCallback? onCancel;
 
   const EventFormWidget({
-    Key? key,
+    super.key,
     this.initialEvent,
     required this.onSave,
     this.onCancel,
-  }) : super(key: key);
+  });
 
   @override
   State<EventFormWidget> createState() => _EventFormWidgetState();

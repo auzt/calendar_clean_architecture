@@ -11,13 +11,13 @@ class EventCardWidget extends StatelessWidget {
   final bool showDate;
 
   const EventCardWidget({
-    Key? key,
+    super.key,
     required this.event,
     this.onTap,
     this.onEdit,
     this.onDelete,
     this.showDate = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
