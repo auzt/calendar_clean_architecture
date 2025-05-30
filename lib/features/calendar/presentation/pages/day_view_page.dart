@@ -22,6 +22,11 @@ class _DayViewPageState extends State<DayViewPage> {
   late DateTime _selectedDate;
   late PageController _pageController;
 
+  // Untuk undo functionality
+  CalendarEvent? _lastMovedEvent;
+  DateTime? _originalStartTime;
+  DateTime? _originalEndTime;
+
   @override
   void initState() {
     super.initState();
@@ -44,8 +49,8 @@ class _DayViewPageState extends State<DayViewPage> {
 
   void _loadEventsForDate(DateTime date) {
     context.read<CalendarBloc>().add(
-      calendar_events.LoadEventsForDate(date: date),
-    );
+          calendar_events.LoadEventsForDate(date: date),
+        );
   }
 
   void _changeDate(int dayOffset) {
@@ -90,6 +95,36 @@ class _DayViewPageState extends State<DayViewPage> {
             icon: const Icon(Icons.chevron_right),
             tooltip: 'Hari Selanjutnya',
           ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'help':
+                  _showHelpDialog();
+                  break;
+                case 'refresh':
+                  _loadEventsForDate(_selectedDate);
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'refresh',
+                child: ListTile(
+                  leading: Icon(Icons.refresh),
+                  title: Text('Refresh'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'help',
+                child: ListTile(
+                  leading: Icon(Icons.help_outline),
+                  title: Text('Bantuan'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: BlocListener<CalendarBloc, CalendarState>(
@@ -113,51 +148,60 @@ class _DayViewPageState extends State<DayViewPage> {
                 backgroundColor: Colors.green,
               ),
             );
+          } else if (state is EventUpdated) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${state.event.title} berhasil dipindah'),
+                backgroundColor: Colors.green,
+                action: SnackBarAction(
+                  label: 'BATALKAN',
+                  textColor: Colors.white,
+                  onPressed: () => _undoMoveEvent(),
+                ),
+              ),
+            );
           }
         },
-        child: BlocBuilder<CalendarBloc, CalendarState>(
-          builder: (context, state) {
-            if (state is CalendarLoading) {
-              return const Center(child: CircularProgressIndicator());
+        child: GestureDetector(
+          onHorizontalDragEnd: (details) {
+            if (details.primaryVelocity != null) {
+              if (details.primaryVelocity! > 0) {
+                _changeDate(-1); // Swipe right = previous day
+              } else if (details.primaryVelocity! < 0) {
+                _changeDate(1); // Swipe left = next day
+              }
             }
+          },
+          child: BlocBuilder<CalendarBloc, CalendarState>(
+            builder: (context, state) {
+              if (state is CalendarLoading) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-            List<CalendarEvent> events = [];
-            if (state is CalendarLoaded) {
-              events =
-                  state.events.where((event) {
-                    return AppDateUtils.isSameDay(
-                          event.startTime,
-                          _selectedDate,
-                        ) ||
-                        (event.isMultiDay &&
-                            _selectedDate.isAfter(
-                              event.startTime.subtract(const Duration(days: 1)),
-                            ) &&
-                            _selectedDate.isBefore(
-                              event.endTime.add(const Duration(days: 1)),
-                            ));
-                  }).toList();
-            }
+              List<CalendarEvent> events = [];
+              if (state is CalendarLoaded) {
+                events = state.events.where((event) {
+                  return AppDateUtils.isSameDay(
+                          event.startTime, _selectedDate) ||
+                      (event.isMultiDay &&
+                          _selectedDate.isAfter(
+                            event.startTime.subtract(const Duration(days: 1)),
+                          ) &&
+                          _selectedDate.isBefore(
+                            event.endTime.add(const Duration(days: 1)),
+                          ));
+                }).toList();
+              }
 
-            return GestureDetector(
-              onHorizontalDragEnd: (details) {
-                if (details.primaryVelocity != null) {
-                  if (details.primaryVelocity! > 0) {
-                    _changeDate(-1); // Swipe right = previous day
-                  } else if (details.primaryVelocity! < 0) {
-                    _changeDate(1); // Swipe left = next day
-                  }
-                }
-              },
-              child: DayViewWidget(
+              return DayViewWidget(
                 date: _selectedDate,
                 events: events,
                 onEventTap: _showEventDetails,
                 onTimeSlotTap: _createEventAtTime,
                 onEventMove: _moveEvent,
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -169,8 +213,7 @@ class _DayViewPageState extends State<DayViewPage> {
   }
 
   void _navigateToAddEvent([DateTime? time]) {
-    final eventTime =
-        time ??
+    final eventTime = time ??
         DateTime(
           _selectedDate.year,
           _selectedDate.month,
@@ -191,98 +234,161 @@ class _DayViewPageState extends State<DayViewPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder:
-          (context) => DraggableScrollableSheet(
-            expand: false,
-            builder:
-                (context, scrollController) => Container(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: event.color,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              event.title,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      _buildDetailRow(
-                        Icons.access_time,
-                        event.isAllDay
-                            ? 'Sepanjang hari'
-                            : '${AppDateUtils.formatTime(event.startTime)} - ${AppDateUtils.formatTime(event.endTime)}',
-                      ),
-
-                      if (event.location != null) ...[
-                        const SizedBox(height: 8),
-                        _buildDetailRow(Icons.location_on, event.location!),
-                      ],
-
-                      if (event.description != null) ...[
-                        const SizedBox(height: 8),
-                        _buildDetailRow(Icons.subject, event.description!),
-                      ],
-
-                      const SizedBox(height: 24),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder:
-                                        (context) => AddEventPage(
-                                          initialDate: event.startTime,
-                                          existingEvent: event,
-                                        ),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.edit),
-                              label: const Text('Edit'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () => _deleteEvent(event),
-                              icon: const Icon(Icons.delete),
-                              label: const Text('Hapus'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                                foregroundColor: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        builder: (context, scrollController) => Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle indicator
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
+              ),
+              const SizedBox(height: 16),
+
+              // Event title dengan color indicator
+              Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: event.color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      event.title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Event details
+              _buildDetailRow(
+                Icons.access_time,
+                event.isAllDay
+                    ? 'Sepanjang hari'
+                    : '${AppDateUtils.formatTime(event.startTime)} - ${AppDateUtils.formatTime(event.endTime)}',
+              ),
+
+              if (event.location != null) ...[
+                const SizedBox(height: 8),
+                _buildDetailRow(Icons.location_on, event.location!),
+              ],
+
+              if (event.description != null) ...[
+                const SizedBox(height: 8),
+                _buildDetailRow(Icons.subject, event.description!),
+              ],
+
+              if (event.isFromGoogle) ...[
+                const SizedBox(height: 8),
+                _buildDetailRow(
+                  Icons.cloud,
+                  'Disinkronkan dengan Google Calendar',
+                ),
+              ],
+
+              const SizedBox(height: 24),
+
+              // Help text for drag & drop
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            color: Colors.blue.shade700, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Tips: Drag & Drop Event',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '• Long press event lalu drag untuk memindah\n'
+                      '• Precision 5 menit (snap ke 10:00, 10:05, dst)\n'
+                      '• Tombol "BATALKAN" untuk undo',
+                      style: TextStyle(
+                        color: Colors.blue.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AddEventPage(
+                              initialDate: event.startTime,
+                              existingEvent: event,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.edit),
+                      label: const Text('Edit'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _deleteEvent(event),
+                      icon: const Icon(Icons.delete),
+                      label: const Text('Hapus'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
+        ),
+      ),
     );
   }
 
@@ -292,7 +398,12 @@ class _DayViewPageState extends State<DayViewPage> {
       children: [
         Icon(icon, color: Colors.grey.shade600, size: 20),
         const SizedBox(width: 12),
-        Expanded(child: Text(text, style: const TextStyle(fontSize: 16))),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 16),
+          ),
+        ),
       ],
     );
   }
@@ -302,13 +413,50 @@ class _DayViewPageState extends State<DayViewPage> {
   }
 
   void _moveEvent(CalendarEvent event, DateTime newTime) {
+    // Simpan untuk undo
+    _lastMovedEvent = event;
+    _originalStartTime = event.startTime;
+    _originalEndTime = event.endTime;
+
     final duration = event.endTime.difference(event.startTime);
     final updatedEvent = event.copyWith(
       startTime: newTime,
       endTime: newTime.add(duration),
     );
 
-    context.read<CalendarBloc>().add(calendar_events.UpdateEvent(updatedEvent));
+    context.read<CalendarBloc>().add(
+          calendar_events.UpdateEvent(updatedEvent),
+        );
+  }
+
+  void _undoMoveEvent() {
+    if (_lastMovedEvent == null ||
+        _originalStartTime == null ||
+        _originalEndTime == null) {
+      return;
+    }
+
+    final originalEvent = _lastMovedEvent!.copyWith(
+      startTime: _originalStartTime!,
+      endTime: _originalEndTime!,
+    );
+
+    context.read<CalendarBloc>().add(
+          calendar_events.UpdateEvent(originalEvent),
+        );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content:
+            Text('${_lastMovedEvent!.title} dikembalikan ke posisi semula'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+
+    // Reset undo data
+    _lastMovedEvent = null;
+    _originalStartTime = null;
+    _originalEndTime = null;
   }
 
   void _deleteEvent(CalendarEvent event) {
@@ -316,27 +464,85 @@ class _DayViewPageState extends State<DayViewPage> {
 
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Hapus Event'),
-            content: Text('Yakin ingin menghapus "${event.title}"?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Batal'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  context.read<CalendarBloc>().add(
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Event'),
+        content: Text('Yakin ingin menghapus "${event.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.read<CalendarBloc>().add(
                     calendar_events.DeleteEvent(event.id),
                   );
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('Hapus'),
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Panduan Day View'),
+          ],
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '📅 Navigasi:',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
+              Text('• Swipe kiri/kanan untuk ganti hari'),
+              Text('• Gunakan tombol ← hari ini → di AppBar'),
+              SizedBox(height: 12),
+              Text(
+                '➕ Menambah Event:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text('• Tap area kosong di kalender'),
+              Text('• Atau gunakan tombol + di kanan bawah'),
+              SizedBox(height: 12),
+              Text(
+                '🎯 Drag & Drop Event:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text('• Long press event lalu drag ke waktu baru'),
+              Text('• Precision 5 menit (snap ke 10:00, 10:05, dst)'),
+              Text('• Events yang overlap akan otomatis tersusun'),
+              Text('• Gunakan tombol "BATALKAN" untuk undo'),
+              SizedBox(height: 12),
+              Text(
+                '⚙️ Fitur Lainnya:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text('• Tap event untuk lihat detail/edit/hapus'),
+              Text('• Scroll vertikal untuk lihat jam lain'),
+              Text('• Garis merah = waktu sekarang (hari ini)'),
             ],
           ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Mengerti'),
+          ),
+        ],
+      ),
     );
   }
 }

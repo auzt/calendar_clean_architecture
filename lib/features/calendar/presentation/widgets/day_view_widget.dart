@@ -27,6 +27,13 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   late ScrollController _scrollController;
   final double _hourHeight = 60.0;
   final double _timeColumnWidth = 80.0;
+  final int _minuteInterval = 5;
+
+  // Drag & Drop state
+  bool _isDragging = false;
+  DateTime? _dragTargetTime;
+  CalendarEvent? _draggedEvent;
+  DateTime? _lastUpdateTime;
 
   @override
   void initState() {
@@ -66,8 +73,48 @@ class _DayViewWidgetState extends State<DayViewWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [_buildTimeColumn(), Expanded(child: _buildEventColumn())],
+    return Stack(
+      children: [
+        Row(
+          children: [
+            _buildTimeColumn(),
+            Expanded(child: _buildEventColumn()),
+          ],
+        ),
+        if (_isDragging && _dragTargetTime != null) _buildDragTimeIndicator(),
+        _buildSwipeIndicator(),
+      ],
+    );
+  }
+
+  Widget _buildSwipeIndicator() {
+    return Positioned(
+      bottom: 16,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.drag_handle, color: Colors.white, size: 14),
+              SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  'Long press event untuk drag • Tap area kosong untuk tambah event',
+                  style: TextStyle(color: Colors.white, fontSize: 9),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -116,6 +163,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
             _buildGridLines(),
             _buildCurrentTimeIndicator(),
             _buildTapDetector(),
+            _buildOverlayDragTarget(),
             ..._buildEventWidgets(),
           ],
         ),
@@ -128,7 +176,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       children: List.generate(24, (hour) {
         final isCurrentHour =
             AppDateUtils.isSameDay(widget.date, DateTime.now()) &&
-            hour == DateTime.now().hour;
+                hour == DateTime.now().hour;
 
         return Container(
           height: _hourHeight,
@@ -183,24 +231,117 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       child: GestureDetector(
         onTapDown: (details) {
           final yPosition = details.localPosition.dy;
-          final hour = (yPosition / _hourHeight).floor();
-          final minute =
-              (((yPosition % _hourHeight) / _hourHeight) * 60).round();
-
-          final tappedTime = DateTime(
-            widget.date.year,
-            widget.date.month,
-            widget.date.day,
-            hour,
-            minute,
-          );
-
-          // Check if tap is on empty area (not on an event)
           if (!_isPositionOccupied(yPosition)) {
+            final hour = (yPosition / _hourHeight).floor();
+            final minute =
+                (((yPosition % _hourHeight) / _hourHeight) * 60).round();
+            final targetMinute = (minute ~/ _minuteInterval) * _minuteInterval;
+
+            final tappedTime = DateTime(
+              widget.date.year,
+              widget.date.month,
+              widget.date.day,
+              hour.clamp(0, 23),
+              targetMinute.clamp(0, 59),
+            );
+
             widget.onTimeSlotTap(tappedTime);
           }
         },
         child: Container(color: Colors.transparent),
+      ),
+    );
+  }
+
+  Widget _buildOverlayDragTarget() {
+    return Positioned.fill(
+      child: DragTarget<CalendarEvent>(
+        onMove: (details) {
+          try {
+            // Throttling untuk smooth update
+            DateTime now = DateTime.now();
+            if (_lastUpdateTime != null &&
+                now.difference(_lastUpdateTime!).inMilliseconds < 16) {
+              return;
+            }
+            _lastUpdateTime = now;
+
+            // Get the render box untuk konversi koordinat yang akurat
+            RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+            if (renderBox != null) {
+              // Konversi global position ke local position
+              Offset localOffset = renderBox.globalToLocal(details.offset);
+              final yPosition = localOffset.dy;
+
+              final hours = yPosition / _hourHeight;
+              final targetHour = hours.floor().clamp(0, 23);
+              final targetMinute = ((hours - targetHour) * 60).round();
+              final snappedMinute =
+                  (targetMinute ~/ _minuteInterval) * _minuteInterval;
+
+              final baseDate = DateTime(
+                widget.date.year,
+                widget.date.month,
+                widget.date.day,
+              );
+
+              setState(() {
+                _dragTargetTime = baseDate.copyWith(
+                  hour: targetHour,
+                  minute: snappedMinute.clamp(0, 59),
+                );
+              });
+            }
+          } catch (e) {
+            debugPrint('Error in drag calculation: $e');
+          }
+        },
+        onWillAcceptWithDetails: (data) {
+          setState(() {
+            _isDragging = true;
+            _draggedEvent = data.data;
+          });
+          return true;
+        },
+        onAcceptWithDetails: (details) {
+          if (_dragTargetTime != null && widget.onEventMove != null) {
+            widget.onEventMove!(details.data, _dragTargetTime!);
+          }
+
+          setState(() {
+            _isDragging = false;
+            _dragTargetTime = null;
+            _draggedEvent = null;
+          });
+        },
+        onLeave: (data) {
+          setState(() {
+            _isDragging = false;
+            _dragTargetTime = null;
+            _draggedEvent = null;
+          });
+        },
+        builder: (context, candidateData, rejectedData) {
+          final isHighlighted = candidateData.isNotEmpty;
+
+          return Container(
+            color: isHighlighted
+                ? Colors.orange.withValues(alpha: 0.1)
+                : Colors.transparent,
+            child: isHighlighted
+                ? Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.6),
+                        width: 2,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  )
+                : null,
+          );
+        },
       ),
     );
   }
@@ -325,7 +466,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     final height = _getEventHeight(event);
 
     final screenWidth = MediaQuery.of(context).size.width - _timeColumnWidth;
-    final eventWidth = screenWidth * layout.width * 0.95; // 5% margin
+    final eventWidth = screenWidth * layout.width * 0.95;
     final eventLeft = screenWidth * layout.left;
 
     return Positioned(
@@ -333,43 +474,194 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       left: eventLeft + 4,
       width: eventWidth,
       height: height,
-      child: GestureDetector(
-        onTap: () => widget.onEventTap(event),
-        onLongPress:
-            widget.onEventMove != null ? () => _startEventDrag(event) : null,
-        child: Container(
-          decoration: BoxDecoration(
-            color: event.color,
-            borderRadius: BorderRadius.circular(4),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
+      child: LongPressDraggable<CalendarEvent>(
+        data: event,
+        onDragStarted: () {
+          setState(() {
+            _isDragging = true;
+            _draggedEvent = event;
+          });
+        },
+        onDragEnd: (details) {
+          setState(() {
+            _isDragging = false;
+            _dragTargetTime = null;
+            _draggedEvent = null;
+          });
+        },
+        feedback: Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: eventWidth,
+            height: height,
+            decoration: BoxDecoration(
+              color: event.color.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    event.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+                if (height > 30)
+                  Flexible(
+                    child: Text(
+                      '${AppDateUtils.formatTime(event.startTime)} - ${AppDateUtils.formatTime(event.endTime)}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
           ),
-          padding: const EdgeInsets.all(4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                event.title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+        ),
+        childWhenDragging: Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade400, width: 2),
+          ),
+          child: Center(
+            child: Icon(
+              Icons.drag_handle,
+              color: Colors.grey.shade600,
+              size: 24,
+            ),
+          ),
+        ),
+        child: GestureDetector(
+          onTap: () => widget.onEventTap(event),
+          child: Container(
+            decoration: BoxDecoration(
+              color: event.color,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (height > 30 && !event.isAllDay)
-                Text(
-                  '${AppDateUtils.formatTime(event.startTime)} - ${AppDateUtils.formatTime(event.endTime)}',
-                  style: const TextStyle(color: Colors.white70, fontSize: 10),
+              ],
+            ),
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    event.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-            ],
+                if (height > 30)
+                  Flexible(
+                    child: Text(
+                      '${AppDateUtils.formatTime(event.startTime)} - ${AppDateUtils.formatTime(event.endTime)}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 9,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDragTimeIndicator() {
+    if (_dragTargetTime == null) {
+      return const SizedBox.shrink();
+    }
+
+    double startTimeY = (_dragTargetTime!.hour * _hourHeight) +
+        (_dragTargetTime!.minute * _hourHeight / 60);
+
+    if (_scrollController.hasClients) {
+      startTimeY -= _scrollController.offset;
+    }
+
+    String timeText = AppDateUtils.formatTime(_dragTargetTime!);
+    if (_draggedEvent != null) {
+      Duration eventDuration = _draggedEvent!.endTime.difference(
+        _draggedEvent!.startTime,
+      );
+      DateTime newEndTime = _dragTargetTime!.add(eventDuration);
+      timeText =
+          '${AppDateUtils.formatTime(_dragTargetTime!)} - ${AppDateUtils.formatTime(newEndTime)}';
+    }
+
+    return Positioned(
+      left: _timeColumnWidth + 10,
+      top: startTimeY - 25,
+      child: IgnorePointer(
+        child: Material(
+          color: Colors.transparent,
+          elevation: 8,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth:
+                  MediaQuery.of(context).size.width - _timeColumnWidth - 40,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.schedule, color: Colors.white, size: 14),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    timeText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -385,27 +677,6 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   double _getEventHeight(CalendarEvent event) {
     final duration = event.endTime.difference(event.startTime);
     return (duration.inMinutes * _hourHeight / 60).clamp(20.0, double.infinity);
-  }
-
-  void _startEventDrag(CalendarEvent event) {
-    if (widget.onEventMove == null) return;
-
-    // Show drag feedback
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Pindah Event'),
-            content: Text('Pilih waktu baru untuk "${event.title}"'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Batal'),
-              ),
-            ],
-          ),
-    );
   }
 }
 
