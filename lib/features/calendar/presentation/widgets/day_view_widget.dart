@@ -35,14 +35,27 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   CalendarEvent? _draggedEvent;
   DateTime? _lastUpdateTime;
 
+  // Separate events
+  List<CalendarEvent> _fullDayEvents = [];
+  List<CalendarEvent> _timedEvents = [];
+
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _separateEvents();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToCurrentTime();
     });
+  }
+
+  @override
+  void didUpdateWidget(DayViewWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.events != widget.events) {
+      _separateEvents();
+    }
   }
 
   @override
@@ -51,7 +64,27 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     super.dispose();
   }
 
+  void _separateEvents() {
+    _fullDayEvents.clear();
+    _timedEvents.clear();
+
+    for (var event in widget.events) {
+      if (event.isAllDay ||
+          (event.startTime.hour == 0 &&
+              event.startTime.minute == 0 &&
+              event.endTime.hour == 23 &&
+              event.endTime.minute == 59 &&
+              AppDateUtils.isSameDay(event.startTime, event.endTime))) {
+        _fullDayEvents.add(event);
+      } else {
+        _timedEvents.add(event);
+      }
+    }
+  }
+
   void _scrollToCurrentTime() {
+    if (!_scrollController.hasClients) return;
+
     final now = DateTime.now();
     final isToday = AppDateUtils.isSameDay(widget.date, now);
 
@@ -73,17 +106,100 @@ class _DayViewWidgetState extends State<DayViewWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return Column(
       children: [
-        Row(
+        // Full day events section (fixed position, no scroll)
+        if (_fullDayEvents.isNotEmpty) _buildFullDayEventsSection(),
+
+        // Time-based events section (scrollable)
+        Expanded(
+          child: Stack(
+            children: [
+              Row(
+                children: [
+                  _buildTimeColumn(),
+                  Expanded(child: _buildEventColumn()),
+                ],
+              ),
+              if (_isDragging && _dragTargetTime != null)
+                _buildDragTimeIndicator(),
+              _buildSwipeIndicator(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFullDayEventsSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Sepanjang Hari',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...(_fullDayEvents.map((event) => _buildFullDayEventCard(event))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFullDayEventCard(CalendarEvent event) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: event.color,
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: GestureDetector(
+        onTap: () => widget.onEventTap(event),
+        child: Row(
           children: [
-            _buildTimeColumn(),
-            Expanded(child: _buildEventColumn()),
+            Expanded(
+              child: Text(
+                event.title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (event.location != null) ...[
+              const SizedBox(width: 8),
+              Icon(
+                Icons.location_on,
+                color: Colors.white.withValues(alpha: 0.8),
+                size: 14,
+              ),
+            ],
           ],
         ),
-        if (_isDragging && _dragTargetTime != null) _buildDragTimeIndicator(),
-        _buildSwipeIndicator(),
-      ],
+      ),
     );
   }
 
@@ -285,22 +401,26 @@ class _DayViewWidgetState extends State<DayViewWidget> {
                 widget.date.day,
               );
 
-              setState(() {
-                _dragTargetTime = baseDate.copyWith(
-                  hour: targetHour,
-                  minute: snappedMinute.clamp(0, 59),
-                );
-              });
+              if (mounted) {
+                setState(() {
+                  _dragTargetTime = baseDate.copyWith(
+                    hour: targetHour,
+                    minute: snappedMinute.clamp(0, 59),
+                  );
+                });
+              }
             }
           } catch (e) {
             debugPrint('Error in drag calculation: $e');
           }
         },
         onWillAcceptWithDetails: (data) {
-          setState(() {
-            _isDragging = true;
-            _draggedEvent = data.data;
-          });
+          if (mounted) {
+            setState(() {
+              _isDragging = true;
+              _draggedEvent = data.data;
+            });
+          }
           return true;
         },
         onAcceptWithDetails: (details) {
@@ -308,18 +428,22 @@ class _DayViewWidgetState extends State<DayViewWidget> {
             widget.onEventMove!(details.data, _dragTargetTime!);
           }
 
-          setState(() {
-            _isDragging = false;
-            _dragTargetTime = null;
-            _draggedEvent = null;
-          });
+          if (mounted) {
+            setState(() {
+              _isDragging = false;
+              _dragTargetTime = null;
+              _draggedEvent = null;
+            });
+          }
         },
         onLeave: (data) {
-          setState(() {
-            _isDragging = false;
-            _dragTargetTime = null;
-            _draggedEvent = null;
-          });
+          if (mounted) {
+            setState(() {
+              _isDragging = false;
+              _dragTargetTime = null;
+              _draggedEvent = null;
+            });
+          }
         },
         builder: (context, candidateData, rejectedData) {
           final isHighlighted = candidateData.isNotEmpty;
@@ -358,7 +482,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       minute,
     );
 
-    for (final event in widget.events) {
+    for (final event in _timedEvents) {
       if (tappedTime.isAfter(event.startTime) &&
           tappedTime.isBefore(event.endTime)) {
         return true;
@@ -373,9 +497,9 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   }
 
   List<EventLayout> _calculateEventLayouts() {
-    if (widget.events.isEmpty) return [];
+    if (_timedEvents.isEmpty) return [];
 
-    final sortedEvents = List<CalendarEvent>.from(widget.events)
+    final sortedEvents = List<CalendarEvent>.from(_timedEvents)
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
 
     final layouts = <EventLayout>[];
@@ -477,17 +601,21 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       child: LongPressDraggable<CalendarEvent>(
         data: event,
         onDragStarted: () {
-          setState(() {
-            _isDragging = true;
-            _draggedEvent = event;
-          });
+          if (mounted) {
+            setState(() {
+              _isDragging = true;
+              _draggedEvent = event;
+            });
+          }
         },
         onDragEnd: (details) {
-          setState(() {
-            _isDragging = false;
-            _dragTargetTime = null;
-            _draggedEvent = null;
-          });
+          if (mounted) {
+            setState(() {
+              _isDragging = false;
+              _dragTargetTime = null;
+              _draggedEvent = null;
+            });
+          }
         },
         feedback: Material(
           elevation: 8,
