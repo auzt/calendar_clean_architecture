@@ -149,6 +149,11 @@ class _DayViewPageState extends State<DayViewPage> {
               ),
             );
           } else if (state is EventUpdated) {
+            // ✅ FIX: Simpan info untuk undo dan reload events
+            _lastMovedEvent = state.event;
+            _originalStartTime = state.event.startTime;
+            _originalEndTime = state.event.endTime;
+
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('${state.event.title} berhasil dipindah'),
@@ -160,6 +165,27 @@ class _DayViewPageState extends State<DayViewPage> {
                 ),
               ),
             );
+
+            // ✅ FIX: Refresh tampilan setelah update
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted) {
+                _loadEventsForDate(_selectedDate);
+              }
+            });
+          } else if (state is EventCreated) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${state.event.title} berhasil dibuat'),
+                backgroundColor: Colors.green,
+              ),
+            );
+
+            // ✅ FIX: Refresh tampilan setelah create
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted) {
+                _loadEventsForDate(_selectedDate);
+              }
+            });
           }
         },
         child: GestureDetector(
@@ -337,6 +363,8 @@ class _DayViewPageState extends State<DayViewPage> {
                     const SizedBox(height: 8),
                     Text(
                       '• Long press event lalu drag untuk memindah\n'
+                      '• Bisa drop di area yang sudah ada event (auto-split)\n'
+                      '• Preview waktu muncul saat drag\n'
                       '• Precision 5 menit (snap ke 10:00, 10:05, dst)\n'
                       '• Tombol "BATALKAN" untuk undo',
                       style: TextStyle(
@@ -412,6 +440,7 @@ class _DayViewPageState extends State<DayViewPage> {
     _navigateToAddEvent(time);
   }
 
+  // ✅ FIX: Improved moveEvent dengan proper state management
   void _moveEvent(CalendarEvent event, DateTime newTime) {
     // Simpan untuk undo
     _lastMovedEvent = event;
@@ -422,8 +451,10 @@ class _DayViewPageState extends State<DayViewPage> {
     final updatedEvent = event.copyWith(
       startTime: newTime,
       endTime: newTime.add(duration),
+      lastModified: DateTime.now(), // ✅ FIX: Update lastModified
     );
 
+    // ✅ FIX: Update via bloc
     context.read<CalendarBloc>().add(
           calendar_events.UpdateEvent(updatedEvent),
         );
@@ -439,6 +470,7 @@ class _DayViewPageState extends State<DayViewPage> {
     final originalEvent = _lastMovedEvent!.copyWith(
       startTime: _originalStartTime!,
       endTime: _originalEndTime!,
+      lastModified: DateTime.now(),
     );
 
     context.read<CalendarBloc>().add(
@@ -522,6 +554,8 @@ class _DayViewPageState extends State<DayViewPage> {
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               Text('• Long press event lalu drag ke waktu baru'),
+              Text('• Bisa drop ke area yang sudah ada event (auto-split)'),
+              Text('• Preview waktu muncul saat drag'),
               Text('• Precision 5 menit (snap ke 10:00, 10:05, dst)'),
               Text('• Events yang overlap akan otomatis tersusun'),
               Text('• Gunakan tombol "BATALKAN" untuk undo'),
