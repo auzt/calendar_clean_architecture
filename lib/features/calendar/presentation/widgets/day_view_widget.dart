@@ -384,9 +384,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     return Positioned.fill(
       child: GestureDetector(
         onTapDown: (TapDownDetails details) {
-          if (!_isPositionOccupied(details.localPosition.dy)) {
-            _createEventAtPosition(details.localPosition.dy);
-          }
+          _createEventAtPosition(details.localPosition.dy);
         },
         child: Container(color: Colors.transparent),
       ),
@@ -395,12 +393,10 @@ class _DayViewWidgetState extends State<DayViewWidget> {
 
   bool _isPositionOccupied(double yPosition) {
     double hours = yPosition / hourHeight;
-    DateTime tapTime = DateTime(
-      widget.date.year,
-      widget.date.month,
-      widget.date.day,
-    ).add(Duration(minutes: (hours * 60).round()));
-
+    DateTime tapTime =
+        DateTime(widget.date.year, widget.date.month, widget.date.day)
+            .add(Duration(minutes: (hours * 60).round()));
+    // Logika pengecekan tabrakan dengan acara lain
     for (CalendarEvent event in _timedEvents) {
       if (tapTime.isAfter(event.startTime) && tapTime.isBefore(event.endTime)) {
         return true;
@@ -422,6 +418,10 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       targetMinute = 0;
     }
     if (targetHour < 0) targetHour = 0;
+
+    // If tap is between 7:00 and 8:00, set start time to 7:00 AM
+    if (targetHour == 7) targetMinute = 0;
+
     if (targetHour >= 24) targetHour = 23;
 
     DateTime baseDate = DateTime(

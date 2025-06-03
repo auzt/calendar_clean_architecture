@@ -319,7 +319,7 @@ class MonthViewWidget extends StatelessWidget {
                             if (miniDayViewHeight <= (_arrowIconSize + 1)) {
                               // +1 for padding
                               return const SizedBox.shrink();
-                            }
+                            }                            
 
                             List<List<CalendarEvent>> eventColumns =
                                 _calculateEventLayoutForMiniView(
@@ -329,7 +329,7 @@ class MonthViewWidget extends StatelessWidget {
                                 (_displayEndTimeHour - _displayStartTimeHour)
                                     .toDouble();
                             if (totalWindowHours <= 0) totalWindowHours = 24.0;
-
+                            
                             double arrowSpace = (hasEventsBeforeDisplayStart ||
                                     hasEventsAfterDisplayEnd)
                                 ? (_arrowIconSize + 0.5)
@@ -439,14 +439,14 @@ class MonthViewWidget extends StatelessWidget {
                                     children: [
                                       if (hasEventsBeforeDisplayStart)
                                         Icon(Icons.arrow_drop_up,
-                                            size: _arrowIconSize,
+                                            size: _arrowIconSize * 0.7, // Mengecilkan ukuran ikon
                                             color: Colors.grey.shade700),
                                       if (hasEventsBeforeDisplayStart &&
                                           hasEventsAfterDisplayEnd)
                                         SizedBox(width: 2),
                                       if (hasEventsAfterDisplayEnd)
                                         Icon(Icons.arrow_drop_down,
-                                            size: _arrowIconSize,
+                                            size: _arrowIconSize * 0.7, // Mengecilkan ukuran ikon
                                             color: Colors.grey.shade700),
                                     ],
                                   ),

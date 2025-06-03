@@ -14,7 +14,8 @@ class AddEventPage extends StatefulWidget {
   final DateTime initialDate;
   final CalendarEvent? existingEvent;
 
-  const AddEventPage({super.key, required this.initialDate, this.existingEvent});
+  const AddEventPage(
+      {super.key, required this.initialDate, this.existingEvent});
 
   @override
   State<AddEventPage> createState() => _AddEventPageState();
@@ -198,8 +199,8 @@ class _AddEventPageState extends State<AddEventPage> {
           _selectedEventType == 'Birthday'
               ? Icons.cake
               : _selectedEventType == 'Task'
-              ? Icons.check_circle_outline
-              : Icons.event,
+                  ? Icons.check_circle_outline
+                  : Icons.event,
           color: Colors.grey[600],
           size: 24,
         ),
@@ -209,10 +210,9 @@ class _AddEventPageState extends State<AddEventPage> {
             controller: _titleController,
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w400),
             decoration: InputDecoration(
-              hintText:
-                  _selectedEventType == 'Birthday'
-                      ? 'Nama ulang tahun'
-                      : _selectedEventType == 'Task'
+              hintText: _selectedEventType == 'Birthday'
+                  ? 'Nama ulang tahun'
+                  : _selectedEventType == 'Task'
                       ? 'Judul task'
                       : 'Judul event',
               hintStyle: TextStyle(color: Colors.grey[600], fontSize: 20),
@@ -227,41 +227,40 @@ class _AddEventPageState extends State<AddEventPage> {
 
   Widget _buildEventTypeSelection() {
     return Row(
-      children:
-          _eventTypes.map((type) {
-            final isSelected = _selectedEventType == type;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: ChoiceChip(
-                label: Text(type),
-                selected: isSelected,
-                onSelected: (selected) {
-                  setState(() {
-                    _selectedEventType = type;
-                    if (type == 'Birthday') {
-                      _isAllDay = true;
-                      _repeatOption = 'Tahunan';
-                      _selectedColor = Colors.green;
-                      _notifications = ['1 minggu sebelum', 'Hari ini'];
-                    } else if (type == 'Task') {
-                      _repeatOption = 'Tidak berulang';
-                      _selectedColor = Colors.orange;
-                      _isAllDay = false;
-                      _notifications = ['30 menit sebelum'];
-                    } else {
-                      _selectedColor = Colors.blue;
-                      _notifications = ['30 menit sebelum'];
-                    }
-                  });
-                },
-                selectedColor: Colors.blue[100],
-                backgroundColor: Colors.grey[100],
-                labelStyle: TextStyle(
-                  color: isSelected ? Colors.blue[800] : Colors.grey[700],
-                ),
-              ),
-            );
-          }).toList(),
+      children: _eventTypes.map((type) {
+        final isSelected = _selectedEventType == type;
+        return Padding(
+          padding: const EdgeInsets.only(right: 8.0),
+          child: ChoiceChip(
+            label: Text(type),
+            selected: isSelected,
+            onSelected: (selected) {
+              setState(() {
+                _selectedEventType = type;
+                if (type == 'Birthday') {
+                  _isAllDay = true;
+                  _repeatOption = 'Tahunan';
+                  _selectedColor = Colors.green;
+                  _notifications = ['1 minggu sebelum', 'Hari ini'];
+                } else if (type == 'Task') {
+                  _repeatOption = 'Tidak berulang';
+                  _selectedColor = Colors.orange;
+                  _isAllDay = false;
+                  _notifications = ['30 menit sebelum'];
+                } else {
+                  _selectedColor = Colors.blue;
+                  _notifications = ['30 menit sebelum'];
+                }
+              });
+            },
+            selectedColor: Colors.blue[100],
+            backgroundColor: Colors.grey[100],
+            labelStyle: TextStyle(
+              color: isSelected ? Colors.blue[800] : Colors.grey[700],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -370,10 +369,9 @@ class _AddEventPageState extends State<AddEventPage> {
   Widget _buildLocationSection() {
     return _buildOptionRow(
       icon: Icons.location_on,
-      title:
-          _locationController.text.isEmpty
-              ? 'Tambah lokasi'
-              : _locationController.text,
+      title: _locationController.text.isEmpty
+          ? 'Tambah lokasi'
+          : _locationController.text,
       onTap: _editLocation,
     );
   }
@@ -381,10 +379,9 @@ class _AddEventPageState extends State<AddEventPage> {
   Widget _buildDescriptionSection() {
     return _buildOptionRow(
       icon: Icons.subject,
-      title:
-          _descriptionController.text.isEmpty
-              ? 'Tambah deskripsi'
-              : _descriptionController.text,
+      title: _descriptionController.text.isEmpty
+          ? 'Tambah deskripsi'
+          : _descriptionController.text,
       onTap: _editDescription,
     );
   }
@@ -492,11 +489,10 @@ class _AddEventPageState extends State<AddEventPage> {
   Future<void> _selectDate(bool isStart) async {
     final result = await showDialog<DateTime>(
       context: context,
-      builder:
-          (context) => DatePickerWidget(
-            initialDate: isStart ? _startDate : _endDate,
-            title: isStart ? 'Pilih Tanggal Mulai' : 'Pilih Tanggal Selesai',
-          ),
+      builder: (context) => DatePickerWidget(
+        initialDate: isStart ? _startDate : _endDate,
+        title: isStart ? 'Pilih Tanggal Mulai' : 'Pilih Tanggal Selesai',
+      ),
     );
 
     if (result != null) {
@@ -546,134 +542,128 @@ class _AddEventPageState extends State<AddEventPage> {
   void _editLocation() {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Lokasi'),
-            content: TextFormField(
-              controller: _locationController,
-              decoration: const InputDecoration(
-                hintText: 'Masukkan lokasi',
-                border: OutlineInputBorder(),
-              ),
-              validator: Validators.validateLocation,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Batal'),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {});
-                  Navigator.pop(context);
-                },
-                child: const Text('Simpan'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: const Text('Lokasi'),
+        content: TextFormField(
+          controller: _locationController,
+          decoration: const InputDecoration(
+            hintText: 'Masukkan lokasi',
+            border: OutlineInputBorder(),
           ),
+          validator: Validators.validateLocation,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {});
+              Navigator.pop(context);
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
     );
   }
 
   void _editDescription() {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Deskripsi'),
-            content: TextFormField(
-              controller: _descriptionController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Masukkan deskripsi',
-                border: OutlineInputBorder(),
-              ),
-              validator: Validators.validateDescription,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Batal'),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {});
-                  Navigator.pop(context);
-                },
-                child: const Text('Simpan'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: const Text('Deskripsi'),
+        content: TextFormField(
+          controller: _descriptionController,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Masukkan deskripsi',
+            border: OutlineInputBorder(),
           ),
+          validator: Validators.validateDescription,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {});
+              Navigator.pop(context);
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
     );
   }
 
   void _selectColor() {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Pilih Warna'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _colorOptions.length,
-                itemBuilder: (context, index) {
-                  final colorOption = _colorOptions[index];
-                  final isSelected = _selectedColor == colorOption['color'];
+      builder: (context) => AlertDialog(
+        title: const Text('Pilih Warna'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _colorOptions.length,
+            itemBuilder: (context, index) {
+              final colorOption = _colorOptions[index];
+              final isSelected = _selectedColor == colorOption['color'];
 
-                  return ListTile(
-                    leading: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: colorOption['color'],
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.grey.shade300),
-                      ),
-                    ),
-                    title: Text(colorOption['name']),
-                    trailing:
-                        isSelected
-                            ? const Icon(Icons.check, color: Colors.blue)
-                            : null,
-                    onTap: () {
-                      setState(() {
-                        _selectedColor = colorOption['color'];
-                      });
-                      Navigator.pop(context);
-                    },
-                  );
+              return ListTile(
+                leading: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: colorOption['color'],
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                ),
+                title: Text(colorOption['name']),
+                trailing: isSelected
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
+                onTap: () {
+                  setState(() {
+                    _selectedColor = colorOption['color'];
+                  });
+                  Navigator.pop(context);
                 },
-              ),
-            ),
+              );
+            },
           ),
+        ),
+      ),
     );
   }
 
   void _showRepeatDialog() {
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Pengulangan'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children:
-                  _repeatOptions.map((option) {
-                    return RadioListTile<String>(
-                      title: Text(option),
-                      value: option,
-                      groupValue: _repeatOption,
-                      onChanged: (value) {
-                        setState(() {
-                          _repeatOption = value!;
-                        });
-                        Navigator.pop(context);
-                      },
-                    );
-                  }).toList(),
-            ),
-          ),
+      builder: (context) => AlertDialog(
+        title: const Text('Pengulangan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _repeatOptions.map((option) {
+            return RadioListTile<String>(
+              title: Text(option),
+              value: option,
+              groupValue: _repeatOption,
+              onChanged: (value) {
+                setState(() {
+                  _repeatOption = value!;
+                });
+                Navigator.pop(context);
+              },
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 
@@ -690,27 +680,25 @@ class _AddEventPageState extends State<AddEventPage> {
 
     showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Tambah Notifikasi'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children:
-                  notificationOptions.map((option) {
-                    return ListTile(
-                      title: Text(option),
-                      onTap: () {
-                        if (!_notifications.contains(option)) {
-                          setState(() {
-                            _notifications.add(option);
-                          });
-                        }
-                        Navigator.pop(context);
-                      },
-                    );
-                  }).toList(),
-            ),
-          ),
+      builder: (context) => AlertDialog(
+        title: const Text('Tambah Notifikasi'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: notificationOptions.map((option) {
+            return ListTile(
+              title: Text(option),
+              onTap: () {
+                if (!_notifications.contains(option)) {
+                  setState(() {
+                    _notifications.add(option);
+                  });
+                }
+                Navigator.pop(context);
+              },
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 
@@ -758,16 +746,14 @@ class _AddEventPageState extends State<AddEventPage> {
     final event = CalendarEvent(
       id: _isEditing ? widget.existingEvent!.id : const Uuid().v4(),
       title: _titleController.text.trim(),
-      description:
-          _descriptionController.text.trim().isEmpty
-              ? null
-              : _descriptionController.text.trim(),
+      description: _descriptionController.text.trim().isEmpty
+          ? null
+          : _descriptionController.text.trim(),
       startTime: startDateTime,
       endTime: endDateTime,
-      location:
-          _locationController.text.trim().isEmpty
-              ? null
-              : _locationController.text.trim(),
+      location: _locationController.text.trim().isEmpty
+          ? null
+          : _locationController.text.trim(),
       isAllDay: _isAllDay,
       color: _selectedColor,
       attendees: _notifications,
