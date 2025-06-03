@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:intl/date_symbol_data_local.dart'; // <--- TAMBAHKAN IMPORT INI
 
 // ✅ ADD: Import Color Adapter
 import 'core/adapters/color_adapter.dart';
@@ -25,10 +26,14 @@ import 'features/calendar/presentation/bloc/calendar_bloc.dart';
 import 'features/calendar/presentation/pages/calendar_home_page.dart';
 
 void main() async {
+  // <--- PASTIKAN main ADALAH ASYNC
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Hive
   await Hive.initFlutter();
+
+  // Initialize Date Formatting for 'id_ID' locale
+  await initializeDateFormatting('id_ID', null); // <--- TAMBAHKAN BARIS INI
 
   try {
     // ✅ CRITICAL: Register Color adapter FIRST (typeId = 1)
@@ -92,7 +97,7 @@ class MyApp extends StatelessWidget {
     final localDataSource = LocalCalendarDataSourceImpl();
 
     // Initialize local data source
-    localDataSource.init();
+    localDataSource.init(); // Pastikan ini dipanggil dan selesai jika async
 
     // Repository
     final repository = CalendarRepositoryImpl(

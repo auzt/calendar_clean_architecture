@@ -95,7 +95,7 @@ class _AddEventPageState extends State<AddEventPage> {
       _startTime = TimeOfDay.now();
       _endDate = _startDate;
       _endTime = TimeOfDay(
-        hour: _startTime.hour + 1,
+        hour: (_startTime.hour + 1) % 24,
         minute: _startTime.minute,
       );
     }
@@ -160,10 +160,6 @@ class _AddEventPageState extends State<AddEventPage> {
       ),
       body: BlocBuilder<CalendarBloc, CalendarState>(
         builder: (context, state) {
-          if (state is CalendarLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Form(
@@ -321,16 +317,25 @@ class _AddEventPageState extends State<AddEventPage> {
         Expanded(
           flex: 2,
           child: GestureDetector(
-            onTap: () => _selectDate(isStart),
+            onTap: () => _selectDateWithEnhancedPicker(isStart),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey.shade300),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(
-                AppDateUtils.formatDisplayDate(date),
-                style: const TextStyle(fontSize: 16),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today,
+                      size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      AppDateUtils.formatDisplayDate(date),
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -350,13 +355,22 @@ class _AddEventPageState extends State<AddEventPage> {
                   border: Border.all(color: Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  time.format(context),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
+                child: Row(
+                  children: [
+                    Icon(Icons.access_time,
+                        size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        time.format(context),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -439,14 +453,16 @@ class _AddEventPageState extends State<AddEventPage> {
                     });
                   },
                   icon: const Icon(Icons.close, size: 20),
+                  tooltip: 'Hapus notifikasi',
                 ),
               ],
             ),
           ),
         ),
-        TextButton(
+        TextButton.icon(
           onPressed: _addNotification,
-          child: const Text('+ Tambah notifikasi'),
+          icon: const Icon(Icons.add),
+          label: const Text('Tambah notifikasi'),
         ),
       ],
     );
@@ -460,6 +476,7 @@ class _AddEventPageState extends State<AddEventPage> {
   }) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
@@ -479,19 +496,42 @@ class _AddEventPageState extends State<AddEventPage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (trailing != null) trailing,
+            if (trailing != null)
+              trailing
+            else if (onTap != null)
+              Icon(Icons.edit, size: 16, color: Colors.grey.shade600),
           ],
         ),
       ),
     );
   }
 
-  Future<void> _selectDate(bool isStart) async {
+  // ✅ FIXED: Enhanced Date Picker dengan MonthViewWidget LENGKAP
+  Future<void> _selectDateWithEnhancedPicker(bool isStart) async {
+    final currentDate = isStart ? _startDate : _endDate;
+
     final result = await showDialog<DateTime>(
       context: context,
-      builder: (context) => DatePickerWidget(
-        initialDate: isStart ? _startDate : _endDate,
-        title: isStart ? 'Pilih Tanggal Mulai' : 'Pilih Tanggal Selesai',
+      barrierDismissible: true,
+      builder: (context) => BlocProvider.value(
+        value: BlocProvider.of<CalendarBloc>(context),
+        child: DatePickerWidget(
+          initialDate: currentDate,
+          title: isStart ? 'Pilih Tanggal Mulai' : 'Pilih Tanggal Selesai',
+          showEvents:
+              true, // ✅ Menampilkan events dalam bentuk blok seperti di home
+          minDate: isStart
+              ? null
+              : _startDate, // End date tidak boleh sebelum start date
+          maxDate: isStart
+              ? _endDate
+              : null, // Start date tidak boleh setelah end date
+          onDateSelected: (selectedDate) {
+            // Real-time callback untuk preview tanggal yang dipilih
+            print(
+                '📅 Date selected: ${AppDateUtils.formatDisplayDate(selectedDate)}');
+          },
+        ),
       ),
     );
 
@@ -499,18 +539,46 @@ class _AddEventPageState extends State<AddEventPage> {
       setState(() {
         if (isStart) {
           _startDate = result;
-          // Adjust end date if it's before start date
+          // Auto adjust end date jika sebelum start date
           if (_endDate.isBefore(_startDate)) {
             _endDate = _startDate;
+            // Show info message untuk user
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content:
+                    Text('Tanggal selesai disesuaikan dengan tanggal mulai'),
+                backgroundColor: Colors.blue,
+                duration: Duration(seconds: 2),
+              ),
+            );
           }
         } else {
           _endDate = result;
-          // Adjust start date if it's after end date
+          // Auto adjust start date jika setelah end date
           if (_startDate.isAfter(_endDate)) {
             _startDate = _endDate;
+            // Show info message untuk user
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content:
+                    Text('Tanggal mulai disesuaikan dengan tanggal selesai'),
+                backgroundColor: Colors.blue,
+                duration: Duration(seconds: 2),
+              ),
+            );
           }
         }
       });
+
+      // Success feedback dengan tanggal yang dipilih
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '${isStart ? 'Tanggal mulai' : 'Tanggal selesai'} berhasil dipilih: ${AppDateUtils.formatDisplayDate(result)}'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -518,6 +586,21 @@ class _AddEventPageState extends State<AddEventPage> {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: isStart ? _startTime : _endTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            timePickerTheme: TimePickerThemeData(
+              backgroundColor: Colors.white,
+              hourMinuteShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: Colors.grey.shade300),
+              ),
+              dayPeriodBorderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (picked != null) {
@@ -526,12 +609,10 @@ class _AddEventPageState extends State<AddEventPage> {
           _startTime = picked;
           // Auto adjust end time to 1 hour later
           final newEndTime = TimeOfDay(
-            hour: picked.hour + 1,
+            hour: (picked.hour + 1) % 24,
             minute: picked.minute,
           );
-          if (newEndTime.hour < 24) {
-            _endTime = newEndTime;
-          }
+          _endTime = newEndTime;
         } else {
           _endTime = picked;
         }
@@ -549,8 +630,10 @@ class _AddEventPageState extends State<AddEventPage> {
           decoration: const InputDecoration(
             hintText: 'Masukkan lokasi',
             border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.location_on),
           ),
           validator: Validators.validateLocation,
+          autofocus: true,
         ),
         actions: [
           TextButton(
@@ -576,12 +659,14 @@ class _AddEventPageState extends State<AddEventPage> {
         title: const Text('Deskripsi'),
         content: TextFormField(
           controller: _descriptionController,
-          maxLines: 3,
+          maxLines: 4,
           decoration: const InputDecoration(
             hintText: 'Masukkan deskripsi',
             border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.description),
           ),
           validator: Validators.validateDescription,
+          autofocus: true,
         ),
         actions: [
           TextButton(
@@ -607,37 +692,62 @@ class _AddEventPageState extends State<AddEventPage> {
         title: const Text('Pilih Warna'),
         content: SizedBox(
           width: double.maxFinite,
-          child: ListView.builder(
+          child: GridView.builder(
             shrinkWrap: true,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1,
+            ),
             itemCount: _colorOptions.length,
             itemBuilder: (context, index) {
               final colorOption = _colorOptions[index];
               final isSelected = _selectedColor == colorOption['color'];
 
-              return ListTile(
-                leading: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: colorOption['color'],
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                ),
-                title: Text(colorOption['name']),
-                trailing: isSelected
-                    ? const Icon(Icons.check, color: Colors.blue)
-                    : null,
+              return GestureDetector(
                 onTap: () {
                   setState(() {
                     _selectedColor = colorOption['color'];
                   });
                   Navigator.pop(context);
                 },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: colorOption['color'],
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? Colors.black : Colors.grey.shade300,
+                      width: isSelected ? 3 : 1,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: colorOption['color'].withOpacity(0.3),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: isSelected
+                      ? const Icon(
+                          Icons.check,
+                          color: Colors.white,
+                          size: 24,
+                        )
+                      : null,
+                ),
               );
             },
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+        ],
       ),
     );
   }
@@ -660,9 +770,16 @@ class _AddEventPageState extends State<AddEventPage> {
                 });
                 Navigator.pop(context);
               },
+              activeColor: Colors.blue,
             );
           }).toList(),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+        ],
       ),
     );
   }
@@ -674,6 +791,7 @@ class _AddEventPageState extends State<AddEventPage> {
       '15 menit sebelum',
       '30 menit sebelum',
       '1 jam sebelum',
+      '2 jam sebelum',
       '1 hari sebelum',
       '1 minggu sebelum',
     ];
@@ -682,22 +800,39 @@ class _AddEventPageState extends State<AddEventPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Tambah Notifikasi'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: notificationOptions.map((option) {
-            return ListTile(
-              title: Text(option),
-              onTap: () {
-                if (!_notifications.contains(option)) {
-                  setState(() {
-                    _notifications.add(option);
-                  });
-                }
-                Navigator.pop(context);
-              },
-            );
-          }).toList(),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: notificationOptions.length,
+            itemBuilder: (context, index) {
+              final option = notificationOptions[index];
+              final isAlreadyAdded = _notifications.contains(option);
+
+              return ListTile(
+                title: Text(option),
+                trailing: isAlreadyAdded
+                    ? const Icon(Icons.check, color: Colors.green)
+                    : null,
+                enabled: !isAlreadyAdded,
+                onTap: isAlreadyAdded
+                    ? null
+                    : () {
+                        setState(() {
+                          _notifications.add(option);
+                        });
+                        Navigator.pop(context);
+                      },
+              );
+            },
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+        ],
       ),
     );
   }
@@ -713,6 +848,17 @@ class _AddEventPageState extends State<AddEventPage> {
 
   void _saveEvent() {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    // Validasi title tidak boleh kosong
+    if (_titleController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Judul event tidak boleh kosong'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
@@ -761,10 +907,34 @@ class _AddEventPageState extends State<AddEventPage> {
       lastModified: DateTime.now(),
     );
 
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Menyimpan event...'),
+          ],
+        ),
+      ),
+    );
+
+    // Save event
     if (_isEditing) {
       context.read<CalendarBloc>().add(calendar_events.UpdateEvent(event));
     } else {
       context.read<CalendarBloc>().add(calendar_events.CreateEvent(event));
     }
+
+    // Close loading dialog after a brief delay
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+      }
+    });
   }
 }

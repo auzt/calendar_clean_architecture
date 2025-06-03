@@ -2,13 +2,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/date_symbol_data_local.dart'; // <--- TAMBAHKAN IMPORT INI
 
 import 'core/di/injection_container.dart' as di;
 import 'features/calendar/presentation/bloc/calendar_bloc.dart';
 import 'features/calendar/presentation/pages/calendar_home_page.dart';
 
 void main() async {
+  // <--- PASTIKAN main ADALAH ASYNC
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Date Formatting for 'id_ID' locale
+  await initializeDateFormatting('id_ID', null); // <--- TAMBAHKAN BARIS INI
 
   // Initialize Hive
   await Hive.initFlutter();
