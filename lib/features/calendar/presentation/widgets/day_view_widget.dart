@@ -9,6 +9,8 @@ class DayViewWidget extends StatefulWidget {
   final Function(CalendarEvent) onEventTap;
   final Function(DateTime) onTimeSlotTap;
   final Function(CalendarEvent, DateTime)? onEventMove;
+  final Function(double)? onScrollPositionChanged;
+  final double? initialScrollPosition;
 
   const DayViewWidget({
     super.key,
@@ -17,6 +19,8 @@ class DayViewWidget extends StatefulWidget {
     required this.onEventTap,
     required this.onTimeSlotTap,
     this.onEventMove,
+    this.onScrollPositionChanged,
+    this.initialScrollPosition,
   });
 
   @override
@@ -29,7 +33,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   final double _timeColumnWidth = 80.0;
   final int _minuteInterval = 5;
 
-  // Drag & Drop state (sama seperti implementasi asli)
+  // ✅ SAMA dengan kode referensi
   bool _isDragging = false;
   DateTime? _dragTargetTime;
   CalendarEvent? _draggedEvent;
@@ -45,8 +49,19 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     _scrollController = ScrollController();
     _separateEvents();
 
+    // Add listener untuk scroll position
+    _scrollController.addListener(() {
+      if (!_isDragging && widget.onScrollPositionChanged != null) {
+        widget.onScrollPositionChanged!(_scrollController.offset);
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToCurrentTime();
+      if (widget.initialScrollPosition != null) {
+        _scrollToPosition(widget.initialScrollPosition!);
+      } else {
+        _scrollToCurrentTime();
+      }
     });
   }
 
@@ -82,6 +97,16 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     }
   }
 
+  void _scrollToPosition(double position) {
+    if (!_scrollController.hasClients) return;
+
+    _scrollController.animateTo(
+      position,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
   void _scrollToCurrentTime() {
     if (!_scrollController.hasClients) return;
 
@@ -109,10 +134,10 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     return SafeArea(
       child: Column(
         children: [
-          // Full day events section (fixed position, no scroll)
+          // Full day events section (tetap ada untuk jadwal seharian)
           if (_fullDayEvents.isNotEmpty) _buildFullDayEventsSection(),
 
-          // Time-based events section (scrollable)
+          // Time-based events section
           Expanded(
             child: Stack(
               children: [
@@ -128,6 +153,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
                     ),
                   ),
                 ),
+                // ✅ SAMA dengan kode referensi - drag indicator di luar scroll
                 if (_isDragging && _dragTargetTime != null)
                   _buildDragTimeIndicator(),
                 _buildSwipeIndicator(),
@@ -230,7 +256,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
               SizedBox(width: 4),
               Flexible(
                 child: Text(
-                  'Long press event untuk drag • Tap area kosong untuk tambah event',
+                  'Long press → drag untuk pindah • Tap area kosong untuk tambah',
                   style: TextStyle(color: Colors.white, fontSize: 9),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -282,11 +308,11 @@ class _DayViewWidgetState extends State<DayViewWidget> {
         children: [
           _buildGridLines(),
           _buildCurrentTimeIndicator(),
-          // Area untuk tap (di belakang events)
+          // ✅ SAMA dengan kode referensi - tap area di belakang
           _buildTapArea(),
-          // Events dengan draggable
+          // ✅ SAMA dengan kode referensi - events layout
           ..._buildLayoutedEvents(),
-          // ✅ FIX: Drag target dengan logic seperti implementasi asli
+          // ✅ SAMA dengan kode referensi - overlay drag target
           _buildOverlayDragTarget(),
         ],
       ),
@@ -294,34 +320,55 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   }
 
   Widget _buildGridLines() {
-    return Column(
-      children: List.generate(24, (hour) {
-        final isCurrentHour =
-            AppDateUtils.isSameDay(widget.date, DateTime.now()) &&
-                hour == DateTime.now().hour;
+    DateTime now = DateTime.now();
+    DateTime today = DateTime(now.year, now.month, now.day);
+    DateTime currentSelectedDate = DateTime(
+      widget.date.year,
+      widget.date.month,
+      widget.date.day,
+    );
 
-        return Container(
-          height: _hourHeight,
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: isCurrentHour ? Colors.blue : Colors.grey.shade300,
-                width: isCurrentHour ? 2 : 1,
-              ),
+    bool isToday = currentSelectedDate.isAtSameMomentAs(today);
+
+    List<Widget> gridLines = [];
+
+    // ✅ SAMA dengan kode referensi - garis setiap jam
+    for (int hour = 0; hour < 24; hour++) {
+      bool isCurrentHour = isToday && hour == now.hour;
+      double top = hour * _hourHeight;
+
+      gridLines.add(
+        Positioned(
+          top: top,
+          left: 0,
+          right: 0,
+          child: Container(
+            height: 1,
+            decoration: BoxDecoration(
+              color: isCurrentHour ? Colors.blue : Colors.grey.shade300,
             ),
           ),
-        );
-      }),
-    );
+        ),
+      );
+    }
+
+    return Stack(children: gridLines);
   }
 
   Widget _buildCurrentTimeIndicator() {
-    if (!AppDateUtils.isSameDay(widget.date, DateTime.now())) {
-      return const SizedBox.shrink();
-    }
+    DateTime now = DateTime.now();
+    DateTime today = DateTime(now.year, now.month, now.day);
+    DateTime currentSelectedDate = DateTime(
+      widget.date.year,
+      widget.date.month,
+      widget.date.day,
+    );
 
-    final now = DateTime.now();
-    final topPosition =
+    bool isToday = currentSelectedDate.isAtSameMomentAs(today);
+
+    if (!isToday) return const SizedBox.shrink();
+
+    double topPosition =
         (now.hour * _hourHeight) + ((now.minute / 60) * _hourHeight);
 
     return Positioned(
@@ -351,11 +398,8 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   Widget _buildTapArea() {
     return Positioned.fill(
       child: GestureDetector(
-        onTapDown: (details) {
-          // Only handle taps when not dragging
-          if (_isDragging) return;
-
-          // Cek apakah tap di area kosong (tidak ada event)
+        onTapDown: (TapDownDetails details) {
+          // ✅ SAMA dengan kode referensi - cek position occupied
           if (!_isPositionOccupied(details.localPosition.dy)) {
             _createEventAtPosition(details.localPosition.dy);
           }
@@ -385,7 +429,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     return false;
   }
 
-  // ✅ FIX: Implementasi drag target sesuai implementasi asli yang bekerja
+  // ✅ PERSIS SAMA dengan kode referensi yang bekerja
   Widget _buildOverlayDragTarget() {
     return Positioned.fill(
       child: Builder(
@@ -393,7 +437,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
           return DragTarget<CalendarEvent>(
             onMove: (details) {
               try {
-                // Throttling untuk smooth update (max 60fps)
+                // ✅ SAMA - Throttling untuk smooth update (max 60fps)
                 DateTime now = DateTime.now();
                 if (_lastUpdateTime != null &&
                     now.difference(_lastUpdateTime!).inMilliseconds < 16) {
@@ -401,8 +445,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
                 }
                 _lastUpdateTime = now;
 
-                // ✅ FIX: Gunakan approach dari implementasi asli
-                // Kalkulasi target time untuk zona tengah
+                // ✅ SAMA - Konversi global position ke local position untuk event column
                 RenderBox? renderBox = context.findRenderObject() as RenderBox?;
                 if (renderBox != null) {
                   Offset localOffset = renderBox.globalToLocal(details.offset);
@@ -445,7 +488,6 @@ class _DayViewWidgetState extends State<DayViewWidget> {
               if (data.data != null) {
                 setState(() {
                   _draggedEvent = data.data;
-                  _isDragging = true;
                 });
               }
               return data.data != null;
@@ -477,6 +519,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
             builder: (context, candidateData, rejectedData) {
               bool isHighlighted = candidateData.isNotEmpty;
 
+              // ✅ SAMA dengan kode referensi - orange overlay ringan
               return IgnorePointer(
                 ignoring: !isHighlighted,
                 child: Container(
@@ -505,7 +548,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   }
 
   void _createEventAtPosition(double yPosition) {
-    // Hitung jam berdasarkan posisi Y yang tepat
+    // ✅ SAMA dengan kode referensi
     double hours = yPosition / _hourHeight;
     int targetHour = hours.floor();
     int targetMinute = ((hours - targetHour) * 60).round();
@@ -544,6 +587,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   }
 
   List<EventLayout> _calculateEventLayouts() {
+    // ✅ SAMA dengan kode referensi
     List<CalendarEvent> events = _timedEvents;
     if (events.isEmpty) return [];
 
@@ -553,7 +597,6 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     List<EventLayout> layouts = [];
     List<List<CalendarEvent>> eventGroups = [];
 
-    // Group overlapping events
     for (CalendarEvent event in sortedEvents) {
       bool addedToGroup = false;
 
@@ -577,7 +620,6 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       }
     }
 
-    // Calculate layout for each group
     for (List<CalendarEvent> group in eventGroups) {
       if (group.length == 1) {
         layouts.add(
@@ -590,7 +632,6 @@ class _DayViewWidgetState extends State<DayViewWidget> {
           ),
         );
       } else {
-        // Multi-column layout untuk overlapping events
         List<List<CalendarEvent>> columns = [];
 
         for (CalendarEvent event in group) {
@@ -795,6 +836,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     );
   }
 
+  // ✅ SAMA dengan kode referensi yang bekerja
   Widget _buildDragTimeIndicator() {
     if (_dragTargetTime == null) {
       return const SizedBox.shrink();
@@ -803,7 +845,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     double startTimeY = (_dragTargetTime!.hour * _hourHeight) +
         (_dragTargetTime!.minute * _hourHeight / 60);
 
-    // ✅ FIX: Adjust for scroll offset seperti implementasi asli
+    // ✅ SAMA - adjust untuk scroll offset
     if (_scrollController.hasClients) {
       startTimeY -= _scrollController.offset;
     }

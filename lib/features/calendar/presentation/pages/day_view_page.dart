@@ -22,10 +22,14 @@ class _DayViewPageState extends State<DayViewPage> {
   late DateTime _selectedDate;
   late PageController _pageController;
 
-  // Untuk undo functionality
+  // ✅ FIX: Tambah variable untuk scroll position
+  double? _savedScrollPosition;
+
+  // Untuk undo functionality - ✅ FIX: Improved undo variables
   CalendarEvent? _lastMovedEvent;
   DateTime? _originalStartTime;
   DateTime? _originalEndTime;
+  bool _hasUndoData = false;
 
   @override
   void initState() {
@@ -56,6 +60,8 @@ class _DayViewPageState extends State<DayViewPage> {
   void _changeDate(int dayOffset) {
     setState(() {
       _selectedDate = _selectedDate.add(Duration(days: dayOffset));
+      // ✅ FIX: Reset saved scroll position ketika ganti hari (bukan untuk drag)
+      _savedScrollPosition = null;
     });
     _loadEventsForDate(_selectedDate);
   }
@@ -78,6 +84,8 @@ class _DayViewPageState extends State<DayViewPage> {
               if (todayDate != _selectedDate) {
                 setState(() {
                   _selectedDate = todayDate;
+                  // ✅ FIX: Reset saved scroll position ketika ke today
+                  _savedScrollPosition = null;
                 });
                 _loadEventsForDate(_selectedDate);
                 _pageController.animateToPage(
@@ -102,6 +110,8 @@ class _DayViewPageState extends State<DayViewPage> {
                   _showHelpDialog();
                   break;
                 case 'refresh':
+                  // ✅ FIX: Reset saved scroll position saat manual refresh
+                  _savedScrollPosition = null;
                   _loadEventsForDate(_selectedDate);
                   break;
               }
@@ -149,10 +159,7 @@ class _DayViewPageState extends State<DayViewPage> {
               ),
             );
           } else if (state is EventUpdated) {
-            // ✅ FIX: Simpan info untuk undo dan reload events
-            _lastMovedEvent = state.event;
-            _originalStartTime = state.event.startTime;
-            _originalEndTime = state.event.endTime;
+            // ✅ FIX: Jangan override undo data - sudah di-set di _moveEvent
 
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -163,10 +170,11 @@ class _DayViewPageState extends State<DayViewPage> {
                   textColor: Colors.white,
                   onPressed: () => _undoMoveEvent(),
                 ),
+                duration: const Duration(seconds: 5),
               ),
             );
 
-            // ✅ FIX: Refresh tampilan setelah update
+            // ✅ FIX: Minimal delay refresh untuk memastikan state update
             Future.delayed(const Duration(milliseconds: 100), () {
               if (mounted) {
                 _loadEventsForDate(_selectedDate);
@@ -180,7 +188,7 @@ class _DayViewPageState extends State<DayViewPage> {
               ),
             );
 
-            // ✅ FIX: Refresh tampilan setelah create
+            // ✅ FIX: Refresh tampilan setelah create (ini OK)
             Future.delayed(const Duration(milliseconds: 100), () {
               if (mounted) {
                 _loadEventsForDate(_selectedDate);
@@ -225,6 +233,12 @@ class _DayViewPageState extends State<DayViewPage> {
                 onEventTap: _showEventDetails,
                 onTimeSlotTap: _createEventAtTime,
                 onEventMove: _moveEvent,
+                // ✅ FIX: Pass callback untuk save scroll position
+                onScrollPositionChanged: (position) {
+                  _savedScrollPosition = position;
+                },
+                // ✅ FIX: Pass saved scroll position
+                initialScrollPosition: _savedScrollPosition,
               );
             },
           ),
@@ -351,7 +365,7 @@ class _DayViewPageState extends State<DayViewPage> {
                             color: Colors.blue.shade700, size: 16),
                         const SizedBox(width: 8),
                         Text(
-                          'Tips: Drag & Drop Event',
+                          'Tips: Drag & Drop Event (FIXED)',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Colors.blue.shade700,
@@ -363,10 +377,11 @@ class _DayViewPageState extends State<DayViewPage> {
                     const SizedBox(height: 8),
                     Text(
                       '• Long press event lalu drag untuk memindah\n'
-                      '• Bisa drop di area yang sudah ada event (auto-split)\n'
+                      '• Bisa drop ke SEMUA jam (0-24) meski tidak terlihat\n'
                       '• Preview waktu muncul saat drag\n'
                       '• Precision 5 menit (snap ke 10:00, 10:05, dst)\n'
-                      '• Tombol "BATALKAN" untuk undo',
+                      '• Events yang overlap akan otomatis tersusun\n'
+                      '• Tombol "BATALKAN" untuk undo (5 detik)',
                       style: TextStyle(
                         color: Colors.blue.shade600,
                         fontSize: 12,
@@ -440,43 +455,86 @@ class _DayViewPageState extends State<DayViewPage> {
     _navigateToAddEvent(time);
   }
 
-  // ✅ FIX: Improved moveEvent dengan proper state management
+  // ✅ FIX: Simplified moveEvent (adaptasi dari kode lama)
   void _moveEvent(CalendarEvent event, DateTime newTime) {
-    // Simpan untuk undo
-    _lastMovedEvent = event;
+    // ✅ FIX: Simpan data undo SEBELUM update
+    _lastMovedEvent = CalendarEvent(
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      startTime: event.startTime, // Original time
+      endTime: event.endTime, // Original time
+      location: event.location,
+      isAllDay: event.isAllDay,
+      color: event.color,
+      googleEventId: event.googleEventId,
+      attendees: event.attendees,
+      recurrence: event.recurrence,
+      isFromGoogle: event.isFromGoogle,
+      lastModified: event.lastModified,
+      createdBy: event.createdBy,
+      additionalData: event.additionalData,
+    );
+
     _originalStartTime = event.startTime;
     _originalEndTime = event.endTime;
+    _hasUndoData = true;
 
+    print('🔄 Saving undo data:');
+    print('   Original: ${_originalStartTime} - ${_originalEndTime}');
+    print('   Event ID: ${_lastMovedEvent?.id}');
+
+    // Calculate new end time maintaining duration
     final duration = event.endTime.difference(event.startTime);
     final updatedEvent = event.copyWith(
       startTime: newTime,
       endTime: newTime.add(duration),
-      lastModified: DateTime.now(), // ✅ FIX: Update lastModified
+      lastModified: DateTime.now(),
     );
 
-    // ✅ FIX: Update via bloc
+    print('   New: ${updatedEvent.startTime} - ${updatedEvent.endTime}');
+
+    // Update via bloc
     context.read<CalendarBloc>().add(
           calendar_events.UpdateEvent(updatedEvent),
         );
   }
 
+  // ✅ FIX: Simplified undo (adaptasi dari kode lama)
   void _undoMoveEvent() {
-    if (_lastMovedEvent == null ||
+    print('🔙 Attempting undo...');
+
+    if (!_hasUndoData ||
+        _lastMovedEvent == null ||
         _originalStartTime == null ||
         _originalEndTime == null) {
+      print('❌ No undo data available');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tidak ada data untuk dibatalkan'),
+          backgroundColor: Colors.orange,
+        ),
+      );
       return;
     }
 
+    print('✅ Restoring event to original position');
+    print('   Event: ${_lastMovedEvent!.title}');
+    print('   Original: ${_originalStartTime} - ${_originalEndTime}');
+
+    // Create event with original times
     final originalEvent = _lastMovedEvent!.copyWith(
       startTime: _originalStartTime!,
       endTime: _originalEndTime!,
       lastModified: DateTime.now(),
     );
 
+    // Update via bloc
     context.read<CalendarBloc>().add(
           calendar_events.UpdateEvent(originalEvent),
         );
 
+    // Show success message
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content:
@@ -485,10 +543,19 @@ class _DayViewPageState extends State<DayViewPage> {
       ),
     );
 
-    // Reset undo data
-    _lastMovedEvent = null;
-    _originalStartTime = null;
-    _originalEndTime = null;
+    // Clear undo data
+    _clearUndoData();
+  }
+
+  // ✅ FIX: Helper method untuk clear undo data
+  void _clearUndoData() {
+    setState(() {
+      _lastMovedEvent = null;
+      _originalStartTime = null;
+      _originalEndTime = null;
+      _hasUndoData = false;
+    });
+    print('🧹 Undo data cleared');
   }
 
   void _deleteEvent(CalendarEvent event) {
@@ -550,15 +617,16 @@ class _DayViewPageState extends State<DayViewPage> {
               Text('• Atau gunakan tombol + di kanan bawah'),
               SizedBox(height: 12),
               Text(
-                '🎯 Drag & Drop Event:',
+                '🎯 Drag & Drop Event (FIXED):',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              Text('• Long press event lalu drag ke waktu baru'),
-              Text('• Bisa drop ke area yang sudah ada event (auto-split)'),
-              Text('• Preview waktu muncul saat drag'),
+              Text('• Long press event lalu drag ke waktu yang diinginkan'),
+              Text('• Bisa drop ke jam manapun (0-24)'),
+              Text('• Preview waktu akurat muncul saat drag'),
               Text('• Precision 5 menit (snap ke 10:00, 10:05, dst)'),
               Text('• Events yang overlap akan otomatis tersusun'),
-              Text('• Gunakan tombol "BATALKAN" untuk undo'),
+              Text('• TIDAK ada overlay warna yang mengganggu'),
+              Text('• Tombol "BATALKAN" untuk undo (5 detik)'),
               SizedBox(height: 12),
               Text(
                 '⚙️ Fitur Lainnya:',
