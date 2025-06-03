@@ -9,6 +9,19 @@ import '../bloc/calendar_bloc.dart';
 import '../bloc/calendar_state.dart';
 import '../pages/day_view_page.dart';
 
+// ✅ FIXED: Define EventGroup class di luar MonthViewWidget
+class EventGroup {
+  DateTime startTime;
+  DateTime endTime;
+  List<CalendarEvent> events;
+
+  EventGroup({
+    required this.startTime,
+    required this.endTime,
+    required this.events,
+  });
+}
+
 class MonthViewWidget extends StatelessWidget {
   final DateTime month;
   final Function(DateTime) onDateTap;
@@ -21,10 +34,15 @@ class MonthViewWidget extends StatelessWidget {
     this.onDateLongPress,
   });
 
-  // Constants for mini day view
-  final int _displayStartTimeHour = 8;
-  final int _displayEndTimeHour = 17;
-  final int _maxEventColumnsInMiniView = 2;
+  // ✅ IMPROVED: Constants untuk tampilkan lebih banyak events
+  final int _displayStartTimeHour = 6;
+  final int _displayEndTimeHour = 22;
+  final int _maxEventColumnsInMiniView =
+      6; // ✅ INCREASED: Lebih banyak kolom untuk 4+ events
+  final int _maxVisibleFullDayEvents = 3;
+  final double _fullDayEventHeight = 3.0;
+  final double _minTimedEventHeight =
+      1.5; // ✅ REDUCED: Lebih kecil agar muat lebih banyak
 
   @override
   Widget build(BuildContext context) {
@@ -149,36 +167,24 @@ class MonthViewWidget extends StatelessWidget {
     final isCurrentMonth = AppDateUtils.isSameMonth(date, month);
     final hasAnyEvents = dayEvents.isNotEmpty;
 
+    // ✅ IMPROVED: Separasi events
     List<CalendarEvent> fullDayTypeEvents = [];
     List<CalendarEvent> timedEvents = [];
 
     if (hasAnyEvents) {
       for (var event in dayEvents) {
-        if (event.startTime.hour == 0 &&
-            event.startTime.minute == 0 &&
-            event.endTime.hour == 23 &&
-            event.endTime.minute == 59 &&
-            AppDateUtils.isSameDay(event.startTime, event.endTime)) {
+        if (event.isAllDay ||
+            (event.startTime.hour == 0 &&
+                event.startTime.minute == 0 &&
+                event.endTime.hour == 23 &&
+                event.endTime.minute == 59 &&
+                AppDateUtils.isSameDay(event.startTime, event.endTime))) {
           fullDayTypeEvents.add(event);
         } else {
           timedEvents.add(event);
         }
       }
       timedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
-    }
-
-    bool hasEventsBeforeDisplayWindow = false;
-    bool hasEventsAfterDisplayWindow = false;
-    if (isCurrentMonth && hasAnyEvents) {
-      for (var event in timedEvents) {
-        if (event.startTime
-            .isBefore(date.copyWith(hour: _displayStartTimeHour))) {
-          hasEventsBeforeDisplayWindow = true;
-        }
-        if (event.endTime.isAfter(date.copyWith(hour: _displayEndTimeHour))) {
-          hasEventsAfterDisplayWindow = true;
-        }
-      }
     }
 
     Color cellBackgroundColor = Colors.transparent;
@@ -188,15 +194,14 @@ class MonthViewWidget extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        // Single click: HANYA popup jadwal (jika ada events)
-        // TIDAK panggil onDateTap untuk menghindari navigasi
+        // Single click: popup jadwal (jika ada events)
         if (hasAnyEvents) {
           _showEventPreviewPopup(context, date, dayEvents);
         }
       },
       onLongPress: () => onDateLongPress?.call(date),
       onDoubleTap: () {
-        // Double click: panggil onDateTap untuk navigasi ke day view
+        // Double click: navigasi ke day view
         onDateTap(date);
       },
       child: Container(
@@ -210,19 +215,57 @@ class MonthViewWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Full day events
-            if (isCurrentMonth && hasAnyEvents)
-              ...fullDayTypeEvents.take(2).map(
+            // ✅ IMPROVED: Full day events - tampilkan lebih banyak TANPA TEXT
+            if (isCurrentMonth && fullDayTypeEvents.isNotEmpty)
+              ...fullDayTypeEvents.take(_maxVisibleFullDayEvents).map(
                     (event) => Container(
-                      height: 4,
+                      height: _fullDayEventHeight,
                       margin: const EdgeInsets.only(
-                          left: 2, right: 2, top: 1, bottom: 1),
+                          left: 2, right: 2, top: 1, bottom: 0.5),
                       decoration: BoxDecoration(
                         color: event.color,
-                        borderRadius: BorderRadius.circular(1),
+                        borderRadius: BorderRadius.circular(1.5),
+                        // ✅ ADDED: Border putih untuk full day events juga
+                        border: Border.all(
+                          color: Colors.white,
+                          width: 0.3,
+                        ),
+                        // ✅ ADDED: Shadow untuk kedalaman
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 0.3,
+                            offset: const Offset(0, 0.3),
+                          ),
+                        ],
                       ),
+                      // ✅ REMOVED: Text content - tidak tampilkan text pada full day events
                     ),
                   ),
+
+            // ✅ IMPROVED: Indicator untuk sisa full day events
+            if (isCurrentMonth &&
+                fullDayTypeEvents.length > _maxVisibleFullDayEvents)
+              Container(
+                height: _fullDayEventHeight,
+                margin: const EdgeInsets.only(
+                    left: 2, right: 2, top: 0.5, bottom: 0.5),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade500,
+                  borderRadius: BorderRadius.circular(1.5),
+                ),
+                child: Center(
+                  child: Text(
+                    '+${fullDayTypeEvents.length - _maxVisibleFullDayEvents} more',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
 
             Expanded(
               child: Row(
@@ -231,7 +274,7 @@ class MonthViewWidget extends StatelessWidget {
                   // Date number
                   Padding(
                     padding:
-                        const EdgeInsets.only(top: 3.0, left: 3.0, right: 2.0),
+                        const EdgeInsets.only(top: 2.0, left: 3.0, right: 2.0),
                     child: Text(
                       '${date.day}',
                       style: TextStyle(
@@ -246,8 +289,8 @@ class MonthViewWidget extends StatelessWidget {
                     ),
                   ),
 
-                  // Mini schedule area
-                  if (isCurrentMonth && hasAnyEvents)
+                  // ✅ MEGA IMPROVED: Mini schedule area - tampilkan SEMUA events sebagai blok
+                  if (isCurrentMonth && timedEvents.isNotEmpty)
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
@@ -255,113 +298,121 @@ class MonthViewWidget extends StatelessWidget {
                           if (miniDayViewHeight <= 10)
                             return const SizedBox.shrink();
 
-                          // Filter timed events dalam window waktu
-                          List<CalendarEvent> eventsInWindow =
-                              timedEvents.where((e) {
-                            DateTime windowStartTime =
-                                date.copyWith(hour: _displayStartTimeHour);
-                            DateTime windowEndTime =
-                                date.copyWith(hour: _displayEndTimeHour);
-                            return e.startTime.isBefore(windowEndTime) &&
-                                e.endTime.isAfter(windowStartTime);
-                          }).toList();
-
-                          if (eventsInWindow.isEmpty &&
-                              !hasEventsBeforeDisplayWindow &&
-                              !hasEventsAfterDisplayWindow) {
-                            return const SizedBox.shrink();
-                          }
-
+                          // ✅ KUNCI: Layout SEMUA timed events tanpa batasan
                           List<List<CalendarEvent>> eventColumns =
                               _calculateEventLayoutForMiniView(
-                                  eventsInWindow, _maxEventColumnsInMiniView);
+                                  timedEvents, _maxEventColumnsInMiniView);
+
                           List<Widget> positionedEventBlocks = [];
                           double totalWindowHours =
                               (_displayEndTimeHour - _displayStartTimeHour)
                                   .toDouble();
 
-                          if (totalWindowHours <= 0 &&
-                              eventsInWindow.isNotEmpty) {
-                            return const SizedBox.shrink();
+                          if (totalWindowHours <= 0) {
+                            totalWindowHours = 24.0; // Fallback
                           }
 
-                          double arrowContainerHeight =
-                              (hasEventsBeforeDisplayWindow ||
-                                      hasEventsAfterDisplayWindow)
-                                  ? 16.0
-                                  : 0.0;
                           double drawableHeight =
-                              max(0, miniDayViewHeight - arrowContainerHeight);
+                              miniDayViewHeight - 2; // Sedikit margin
 
-                          if (eventsInWindow.isNotEmpty &&
-                              totalWindowHours > 0) {
-                            for (int colIdx = 0;
-                                colIdx < eventColumns.length;
-                                colIdx++) {
-                              double columnWidth =
-                                  (constraints.maxWidth / eventColumns.length) -
-                                      (eventColumns.length > 1 ? 0.5 : 0);
+                          // ✅ FIXED: Render dengan width adaptif berdasarkan overlap
+                          for (int colIdx = 0;
+                              colIdx < eventColumns.length;
+                              colIdx++) {
+                            for (CalendarEvent event in eventColumns[colIdx]) {
+                              // ✅ KUNCI: Ambil layout info dari event
+                              Map<String, dynamic>? layoutInfo =
+                                  event.additionalData?['layoutInfo']
+                                      as Map<String, dynamic>?;
 
-                              for (CalendarEvent event
-                                  in eventColumns[colIdx]) {
-                                DateTime eventStartClamped = event.startTime
-                                        .isBefore(date.copyWith(
-                                            hour: _displayStartTimeHour))
-                                    ? date.copyWith(hour: _displayStartTimeHour)
-                                    : event.startTime;
-                                DateTime eventEndClamped = event.endTime
-                                        .isAfter(date.copyWith(
-                                            hour: _displayEndTimeHour))
-                                    ? date.copyWith(hour: _displayEndTimeHour)
-                                    : event.endTime;
+                              double widthFraction =
+                                  layoutInfo?['widthFraction'] ??
+                                      (1.0 / eventColumns.length);
+                              int columnIndex =
+                                  layoutInfo?['columnIndex'] ?? colIdx;
+                              int totalColumns = layoutInfo?['totalColumns'] ??
+                                  eventColumns.length;
 
-                                if (eventStartClamped
-                                        .isAfter(eventEndClamped) ||
-                                    eventStartClamped.isAtSameMomentAs(
-                                        eventEndClamped)) continue;
+                              // ✅ Hitung posisi berdasarkan jam aktual
+                              double eventStartHour = event.startTime.hour +
+                                  event.startTime.minute / 60.0;
+                              double eventEndHour = event.endTime.hour +
+                                  event.endTime.minute / 60.0;
 
-                                double startOffsetHours =
-                                    (eventStartClamped.hour +
-                                            eventStartClamped.minute / 60.0) -
-                                        _displayStartTimeHour;
-                                double endOffsetHours = (eventEndClamped.hour +
-                                        eventEndClamped.minute / 60.0) -
-                                    _displayStartTimeHour;
-                                double top =
-                                    (startOffsetHours / totalWindowHours) *
-                                        drawableHeight;
-                                double height =
-                                    ((endOffsetHours - startOffsetHours) /
-                                            totalWindowHours) *
-                                        drawableHeight;
-
-                                height = max(2.0, height);
-                                if (top < 0) top = 0;
-                                if (height < 0) height = 0;
-                                if (top + height > drawableHeight)
-                                  height = drawableHeight - top;
-                                if (height < 0) height = 0;
-
-                                positionedEventBlocks.add(
-                                  Positioned(
-                                    top: top,
-                                    left: colIdx *
-                                        (columnWidth +
-                                            (eventColumns.length > 1
-                                                ? 0.5
-                                                : 0)),
-                                    width: columnWidth,
-                                    height: height,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: event.color.withOpacity(0.9),
-                                        borderRadius:
-                                            BorderRadius.circular(0.5),
-                                      ),
-                                    ),
-                                  ),
-                                );
+                              if (eventEndHour <= eventStartHour) {
+                                eventEndHour = eventStartHour + 0.5;
                               }
+
+                              double windowStartHour =
+                                  _displayStartTimeHour.toDouble();
+                              double windowEndHour =
+                                  _displayEndTimeHour.toDouble();
+
+                              double displayStartHour =
+                                  max(eventStartHour, windowStartHour);
+                              double displayEndHour =
+                                  min(eventEndHour, windowEndHour);
+
+                              if (displayEndHour <= displayStartHour) continue;
+
+                              double relativeStart =
+                                  (displayStartHour - windowStartHour) /
+                                      totalWindowHours;
+                              double relativeEnd =
+                                  (displayEndHour - windowStartHour) /
+                                      totalWindowHours;
+
+                              double top = relativeStart * drawableHeight;
+                              double height = (relativeEnd - relativeStart) *
+                                  drawableHeight;
+                              height = max(_minTimedEventHeight, height);
+
+                              if (top < 0) {
+                                height += top;
+                                top = 0;
+                              }
+                              if (top + height > drawableHeight) {
+                                height = drawableHeight - top;
+                              }
+                              if (height <= 0) continue;
+
+                              // ✅ KUNCI: Width dan position berdasarkan overlap group
+                              double totalAvailableWidth =
+                                  constraints.maxWidth - 1;
+                              double eventWidth =
+                                  totalAvailableWidth * widthFraction;
+                              double eventLeft = totalAvailableWidth *
+                                  (columnIndex * widthFraction);
+
+                              positionedEventBlocks.add(
+                                Positioned(
+                                  top: top,
+                                  left: eventLeft,
+                                  width: eventWidth -
+                                      0.5, // Gap kecil antar events
+                                  height: height,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: event.color.withOpacity(0.9),
+                                      borderRadius: BorderRadius.circular(1),
+                                      // ✅ IMPROVED: Border yang lebih tajam dan jelas
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 0.5,
+                                      ),
+                                      // ✅ ADDED: Shadow untuk kedalaman
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.15),
+                                          blurRadius: 0.5,
+                                          offset: const Offset(0, 0.5),
+                                        ),
+                                      ],
+                                    ),
+                                    // ✅ REMOVED: Text content - tidak tampilkan text
+                                  ),
+                                ),
+                              );
                             }
                           }
 
@@ -370,36 +421,7 @@ class MonthViewWidget extends StatelessWidget {
                                 top: 1, right: 1, bottom: 1),
                             width: double.infinity,
                             child: Stack(
-                              children: [
-                                ...positionedEventBlocks,
-                                if (hasEventsBeforeDisplayWindow ||
-                                    hasEventsAfterDisplayWindow)
-                                  Positioned(
-                                    bottom: 0,
-                                    left: 0,
-                                    right: 0,
-                                    height: arrowContainerHeight,
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.center,
-                                      children: [
-                                        if (hasEventsBeforeDisplayWindow)
-                                          Icon(Icons.arrow_drop_up,
-                                              size: 14,
-                                              color: Colors.grey.shade600),
-                                        if (hasEventsBeforeDisplayWindow &&
-                                            hasEventsAfterDisplayWindow)
-                                          const SizedBox(width: 2),
-                                        if (hasEventsAfterDisplayWindow)
-                                          Icon(Icons.arrow_drop_down,
-                                              size: 14,
-                                              color: Colors.grey.shade600),
-                                      ],
-                                    ),
-                                  ),
-                              ],
+                              children: positionedEventBlocks,
                             ),
                           );
                         },
@@ -416,48 +438,142 @@ class MonthViewWidget extends StatelessWidget {
     );
   }
 
+  // ✅ FIXED: Layout algorithm yang adaptive - lebar berdasarkan overlap
   List<List<CalendarEvent>> _calculateEventLayoutForMiniView(
       List<CalendarEvent> events, int maxColumns) {
     if (events.isEmpty) return [];
 
     List<CalendarEvent> sortedEvents = List.from(events)
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
-    List<List<CalendarEvent>> columns = [];
 
-    for (CalendarEvent event in sortedEvents) {
-      bool placed = false;
-      for (int i = 0; i < columns.length; i++) {
-        bool canPlaceInThisColumn = true;
-        for (CalendarEvent existingEvent in columns[i]) {
-          if (_eventsOverlap(event, existingEvent)) {
-            canPlaceInThisColumn = false;
+    // ✅ KUNCI: Group events berdasarkan time slots yang overlap
+    List<EventGroup> eventGroups = _groupOverlappingEvents(sortedEvents);
+
+    List<List<CalendarEvent>> finalColumns = [];
+
+    // ✅ Process setiap group secara terpisah
+    for (EventGroup group in eventGroups) {
+      List<List<CalendarEvent>> groupColumns = [];
+
+      for (CalendarEvent event in group.events) {
+        bool placed = false;
+
+        // Coba tempatkan di kolom existing tanpa overlap dalam group ini
+        for (int i = 0; i < groupColumns.length; i++) {
+          bool canPlace = true;
+          for (CalendarEvent existing in groupColumns[i]) {
+            if (_eventsOverlap(event, existing)) {
+              canPlace = false;
+              break;
+            }
+          }
+          if (canPlace) {
+            groupColumns[i].add(event);
+            placed = true;
             break;
           }
         }
-        if (canPlaceInThisColumn) {
-          columns[i].add(event);
-          placed = true;
-          break;
+
+        // Jika tidak bisa ditempatkan, buat kolom baru
+        if (!placed) {
+          groupColumns.add([event]);
         }
       }
-      if (!placed) {
-        if (columns.length < maxColumns) {
-          columns.add([event]);
-        } else {
-          if (columns.isNotEmpty) {
-            columns.last.add(event);
-          } else {
-            columns.add([event]);
+
+      // ✅ KUNCI: Set width fraction berdasarkan jumlah kolom dalam group
+      double widthFraction = 1.0 / groupColumns.length;
+      for (int i = 0; i < groupColumns.length; i++) {
+        for (CalendarEvent event in groupColumns[i]) {
+          // Simpan info layout dalam event (gunakan additionalData)
+          Map<String, dynamic> layoutInfo = {
+            'widthFraction': widthFraction,
+            'columnIndex': i,
+            'totalColumns': groupColumns.length,
+            'groupStartTime': group.startTime,
+            'groupEndTime': group.endTime,
+          };
+
+          // Update additionalData untuk setiap event
+          CalendarEvent updatedEvent = event.copyWith(
+            additionalData: {
+              ...(event.additionalData ?? {}),
+              'layoutInfo': layoutInfo
+            },
+          );
+
+          // Tambahkan ke final columns
+          if (finalColumns.length <= i) {
+            finalColumns.add([]);
           }
+          finalColumns[i].add(updatedEvent);
         }
       }
     }
-    return columns;
+
+    return finalColumns;
+  }
+
+  // ✅ NEW: Group events yang overlap dalam time slots
+  List<EventGroup> _groupOverlappingEvents(List<CalendarEvent> events) {
+    List<EventGroup> groups = [];
+
+    for (CalendarEvent event in events) {
+      bool addedToGroup = false;
+
+      for (EventGroup group in groups) {
+        // Cek apakah event ini overlap dengan group
+        if (event.startTime.isBefore(group.endTime) &&
+            event.endTime.isAfter(group.startTime)) {
+          group.events.add(event);
+          // Update group time range
+          if (event.startTime.isBefore(group.startTime)) {
+            group.startTime = event.startTime;
+          }
+          if (event.endTime.isAfter(group.endTime)) {
+            group.endTime = event.endTime;
+          }
+          addedToGroup = true;
+          break;
+        }
+      }
+
+      if (!addedToGroup) {
+        groups.add(EventGroup(
+          startTime: event.startTime,
+          endTime: event.endTime,
+          events: [event],
+        ));
+      }
+    }
+
+    return groups;
+  }
+
+  int _countOverlaps(CalendarEvent event, List<CalendarEvent> columnEvents) {
+    int count = 0;
+    for (CalendarEvent existing in columnEvents) {
+      if (_eventsOverlap(event, existing)) count++;
+    }
+    return count;
   }
 
   bool _eventsOverlap(CalendarEvent event1, CalendarEvent event2) {
-    return event1.startTime.isBefore(event2.endTime) &&
-        event2.startTime.isBefore(event1.endTime);
+    // ✅ FIXED: Deteksi overlap yang lebih akurat
+    // Events overlap jika ada irisan waktu apapun
+    DateTime start1 = event1.startTime;
+    DateTime end1 = event1.endTime;
+    DateTime start2 = event2.startTime;
+    DateTime end2 = event2.endTime;
+
+    // Debug print untuk tracking overlap detection
+    bool overlaps = start1.isBefore(end2) && start2.isBefore(end1);
+
+    if (overlaps) {
+      print(
+          '🔄 Overlap detected: ${event1.title} (${start1.hour}:${start1.minute}-${end1.hour}:${end1.minute}) overlaps with ${event2.title} (${start2.hour}:${start2.minute}-${end2.hour}:${end2.minute})');
+    }
+
+    return overlaps;
   }
 
   int _getWeekNumber(DateTime date) {
@@ -481,27 +597,47 @@ class MonthViewWidget extends StatelessWidget {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text("Jadwal ${DateFormat('EEE, d MMM yy').format(date)}"),
+          title: Row(
+            children: [
+              Icon(Icons.calendar_today, color: Colors.blue, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "${DateFormat('EEE, d MMM yy').format(date)} (${events.length} events)",
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
+            ],
+          ),
           contentPadding: const EdgeInsets.fromLTRB(12.0, 16.0, 12.0, 8.0),
           content: SizedBox(
             width: double.maxFinite,
-            height: MediaQuery.of(context).size.height * 0.35,
+            height: MediaQuery.of(context).size.height * 0.4,
             child: ListView.builder(
               itemCount: events.length,
               itemBuilder: (BuildContext context, int index) {
                 CalendarEvent event = events[index];
-                bool isFullDay = event.startTime.hour == 0 &&
-                    event.startTime.minute == 0 &&
-                    event.endTime.hour == 23 &&
-                    event.endTime.minute == 59 &&
-                    AppDateUtils.isSameDay(event.startTime, event.endTime);
+                bool isFullDay = event.isAllDay ||
+                    (event.startTime.hour == 0 &&
+                        event.startTime.minute == 0 &&
+                        event.endTime.hour == 23 &&
+                        event.endTime.minute == 59 &&
+                        AppDateUtils.isSameDay(event.startTime, event.endTime));
 
                 return Card(
                   elevation: 1.0,
-                  margin: const EdgeInsets.symmetric(vertical: 4.0),
+                  margin: const EdgeInsets.symmetric(vertical: 3.0),
                   color: event.color.withOpacity(0.1),
                   child: ListTile(
-                    leading: Icon(Icons.circle, color: event.color, size: 12),
+                    dense: true,
+                    leading: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: event.color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
                     title: Text(
                       event.title,
                       style: const TextStyle(
@@ -513,7 +649,10 @@ class MonthViewWidget extends StatelessWidget {
                           : "${DateFormat.Hm().format(event.startTime)} - ${DateFormat.Hm().format(event.endTime)}",
                       style: const TextStyle(fontSize: 12),
                     ),
-                    dense: true,
+                    trailing: event.isFromGoogle
+                        ? Icon(Icons.cloud,
+                            size: 16, color: Colors.grey.shade600)
+                        : null,
                   ),
                 );
               },
