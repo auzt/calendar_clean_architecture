@@ -9,7 +9,6 @@ import '../bloc/calendar_bloc.dart';
 import '../bloc/calendar_state.dart';
 import '../pages/day_view_page.dart';
 
-// ✅ FIXED: Define EventGroup class di luar MonthViewWidget
 class EventGroup {
   DateTime startTime;
   DateTime endTime;
@@ -34,15 +33,12 @@ class MonthViewWidget extends StatelessWidget {
     this.onDateLongPress,
   });
 
-  // ✅ IMPROVED: Constants untuk tampilkan lebih banyak events
   final int _displayStartTimeHour = 8;
-  final int _displayEndTimeHour = 15;
-  final int _maxEventColumnsInMiniView =
-      6; // ✅ INCREASED: Lebih banyak kolom untuk 4+ events
+  final int _displayEndTimeHour = 17; // 5 PM
+  final int _maxEventColumnsInMiniView = 6;
   final int _maxVisibleFullDayEvents = 3;
   final double _fullDayEventHeight = 3.0;
-  final double _minTimedEventHeight =
-      1.5; // ✅ REDUCED: Lebih kecil agar muat lebih banyak
+  final double _minTimedEventHeight = 1.5;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +112,6 @@ class MonthViewWidget extends StatelessWidget {
                 final dayEvents = _getEventsForDate(events, date);
 
                 if (index % 7 == 0) {
-                  // Add week number for first column
                   return Stack(
                     children: [
                       _buildDateCell(context, date, dayEvents),
@@ -167,9 +162,11 @@ class MonthViewWidget extends StatelessWidget {
     final isCurrentMonth = AppDateUtils.isSameMonth(date, month);
     final hasAnyEvents = dayEvents.isNotEmpty;
 
-    // ✅ IMPROVED: Separasi events
     List<CalendarEvent> fullDayTypeEvents = [];
     List<CalendarEvent> timedEvents = [];
+
+    bool hasEventsBeforeDisplayStart = false;
+    bool hasEventsAfterDisplayEnd = false;
 
     if (hasAnyEvents) {
       for (var event in dayEvents) {
@@ -182,6 +179,21 @@ class MonthViewWidget extends StatelessWidget {
           fullDayTypeEvents.add(event);
         } else {
           timedEvents.add(event);
+          if (event.startTime.hour < _displayStartTimeHour) {
+            hasEventsBeforeDisplayStart = true;
+          }
+          if (event.endTime.hour > _displayEndTimeHour ||
+              (event.endTime.hour == _displayEndTimeHour &&
+                  event.endTime.minute > 0) ||
+              event.startTime.hour >= _displayEndTimeHour) {
+            // If an event ends exactly at _displayEndTimeHour:00 but started before, it's within visible part.
+            // So, only flag if it truly spills over or starts at/after _displayEndTimeHour.
+            if (!(event.endTime.hour == _displayEndTimeHour &&
+                event.endTime.minute == 0 &&
+                event.startTime.hour < _displayEndTimeHour)) {
+              hasEventsAfterDisplayEnd = true;
+            }
+          }
         }
       }
       timedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
@@ -194,14 +206,12 @@ class MonthViewWidget extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        // Single click: popup jadwal (jika ada events)
         if (hasAnyEvents) {
           _showEventPreviewPopup(context, date, dayEvents);
         }
       },
       onLongPress: () => onDateLongPress?.call(date),
       onDoubleTap: () {
-        // Double click: navigasi ke day view
         onDateTap(date);
       },
       child: Container(
@@ -215,7 +225,7 @@ class MonthViewWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ✅ IMPROVED: Full day events - tampilkan lebih banyak TANPA TEXT
+            // Full day events section (max 3)
             if (isCurrentMonth && fullDayTypeEvents.isNotEmpty)
               ...fullDayTypeEvents.take(_maxVisibleFullDayEvents).map(
                     (event) => Container(
@@ -225,12 +235,10 @@ class MonthViewWidget extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: event.color,
                         borderRadius: BorderRadius.circular(1.5),
-                        // ✅ ADDED: Border putih untuk full day events juga
                         border: Border.all(
                           color: Colors.white,
                           width: 0.3,
                         ),
-                        // ✅ ADDED: Shadow untuk kedalaman
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.1),
@@ -239,11 +247,8 @@ class MonthViewWidget extends StatelessWidget {
                           ),
                         ],
                       ),
-                      // ✅ REMOVED: Text content - tidak tampilkan text pada full day events
                     ),
                   ),
-
-            // ✅ IMPROVED: Indicator untuk sisa full day events
             if (isCurrentMonth &&
                 fullDayTypeEvents.length > _maxVisibleFullDayEvents)
               Container(
@@ -266,19 +271,20 @@ class MonthViewWidget extends StatelessWidget {
                   ),
                 ),
               ),
-
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Date number
+                  // Date number: Font larger, padded more from top
                   Padding(
-                    padding:
-                        const EdgeInsets.only(top: 2.0, left: 3.0, right: 2.0),
+                    padding: const EdgeInsets.only(
+                        top: 4.0,
+                        left: 4.0,
+                        right: 2.0), // Increased top padding
                     child: Text(
                       '${date.day}',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 15, // Increased font size
                         fontWeight: isActualToday && isCurrentMonth
                             ? FontWeight.bold
                             : FontWeight.normal,
@@ -288,17 +294,16 @@ class MonthViewWidget extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                  // ✅ MEGA IMPROVED: Mini schedule area - tampilkan SEMUA events sebagai blok
+                  // Mini schedule area
                   if (isCurrentMonth && timedEvents.isNotEmpty)
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           double miniDayViewHeight = constraints.maxHeight;
-                          if (miniDayViewHeight <= 10)
+                          if (miniDayViewHeight <= 10) {
                             return const SizedBox.shrink();
+                          }
 
-                          // ✅ KUNCI: Layout SEMUA timed events tanpa batasan
                           List<List<CalendarEvent>> eventColumns =
                               _calculateEventLayoutForMiniView(
                                   timedEvents, _maxEventColumnsInMiniView);
@@ -309,18 +314,15 @@ class MonthViewWidget extends StatelessWidget {
                                   .toDouble();
 
                           if (totalWindowHours <= 0) {
-                            totalWindowHours = 24.0; // Fallback
+                            totalWindowHours = 24.0;
                           }
 
-                          double drawableHeight =
-                              miniDayViewHeight - 2; // Sedikit margin
+                          double drawableHeight = miniDayViewHeight - 2;
 
-                          // ✅ FIXED: Render dengan width adaptif berdasarkan overlap
                           for (int colIdx = 0;
                               colIdx < eventColumns.length;
                               colIdx++) {
                             for (CalendarEvent event in eventColumns[colIdx]) {
-                              // ✅ KUNCI: Ambil layout info dari event
                               Map<String, dynamic>? layoutInfo =
                                   event.additionalData?['layoutInfo']
                                       as Map<String, dynamic>?;
@@ -330,10 +332,7 @@ class MonthViewWidget extends StatelessWidget {
                                       (1.0 / eventColumns.length);
                               int columnIndex =
                                   layoutInfo?['columnIndex'] ?? colIdx;
-                              int totalColumns = layoutInfo?['totalColumns'] ??
-                                  eventColumns.length;
 
-                              // ✅ Hitung posisi berdasarkan jam aktual
                               double eventStartHour = event.startTime.hour +
                                   event.startTime.minute / 60.0;
                               double eventEndHour = event.endTime.hour +
@@ -376,7 +375,6 @@ class MonthViewWidget extends StatelessWidget {
                               }
                               if (height <= 0) continue;
 
-                              // ✅ KUNCI: Width dan position berdasarkan overlap group
                               double totalAvailableWidth =
                                   constraints.maxWidth - 1;
                               double eventWidth =
@@ -388,19 +386,16 @@ class MonthViewWidget extends StatelessWidget {
                                 Positioned(
                                   top: top,
                                   left: eventLeft,
-                                  width: eventWidth -
-                                      0.5, // Gap kecil antar events
+                                  width: eventWidth - 0.5,
                                   height: height,
                                   child: Container(
                                     decoration: BoxDecoration(
                                       color: event.color.withOpacity(0.9),
                                       borderRadius: BorderRadius.circular(1),
-                                      // ✅ IMPROVED: Border yang lebih tajam dan jelas
                                       border: Border.all(
                                         color: Colors.white,
                                         width: 0.5,
                                       ),
-                                      // ✅ ADDED: Shadow untuk kedalaman
                                       boxShadow: [
                                         BoxShadow(
                                           color: Colors.black.withOpacity(0.15),
@@ -409,11 +404,37 @@ class MonthViewWidget extends StatelessWidget {
                                         ),
                                       ],
                                     ),
-                                    // ✅ REMOVED: Text content - tidak tampilkan text
                                   ),
                                 ),
                               );
                             }
+                          }
+                          // ADDED: Combined arrow indicators at the bottom
+                          if (hasEventsBeforeDisplayStart ||
+                              hasEventsAfterDisplayEnd) {
+                            positionedEventBlocks.add(
+                              Positioned(
+                                bottom: 1, // Small padding from the bottom
+                                left: 0,
+                                right: 0,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (hasEventsBeforeDisplayStart) // Show up arrow only if relevant
+                                      Icon(Icons.arrow_drop_up,
+                                          size: 12,
+                                          color: Colors.grey.shade700),
+                                    if (hasEventsBeforeDisplayStart &&
+                                        hasEventsAfterDisplayEnd) // spacing if both shown
+                                      SizedBox(width: 2),
+                                    if (hasEventsAfterDisplayEnd) // Show down arrow only if relevant
+                                      Icon(Icons.arrow_drop_down,
+                                          size: 12,
+                                          color: Colors.grey.shade700),
+                                  ],
+                                ),
+                              ),
+                            );
                           }
 
                           return Container(
@@ -438,7 +459,6 @@ class MonthViewWidget extends StatelessWidget {
     );
   }
 
-  // ✅ FIXED: Layout algorithm yang adaptive - lebar berdasarkan overlap
   List<List<CalendarEvent>> _calculateEventLayoutForMiniView(
       List<CalendarEvent> events, int maxColumns) {
     if (events.isEmpty) return [];
@@ -446,19 +466,14 @@ class MonthViewWidget extends StatelessWidget {
     List<CalendarEvent> sortedEvents = List.from(events)
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
 
-    // ✅ KUNCI: Group events berdasarkan time slots yang overlap
     List<EventGroup> eventGroups = _groupOverlappingEvents(sortedEvents);
-
     List<List<CalendarEvent>> finalColumns = [];
 
-    // ✅ Process setiap group secara terpisah
     for (EventGroup group in eventGroups) {
       List<List<CalendarEvent>> groupColumns = [];
 
       for (CalendarEvent event in group.events) {
         bool placed = false;
-
-        // Coba tempatkan di kolom existing tanpa overlap dalam group ini
         for (int i = 0; i < groupColumns.length; i++) {
           bool canPlace = true;
           for (CalendarEvent existing in groupColumns[i]) {
@@ -473,18 +488,14 @@ class MonthViewWidget extends StatelessWidget {
             break;
           }
         }
-
-        // Jika tidak bisa ditempatkan, buat kolom baru
         if (!placed) {
           groupColumns.add([event]);
         }
       }
 
-      // ✅ KUNCI: Set width fraction berdasarkan jumlah kolom dalam group
       double widthFraction = 1.0 / groupColumns.length;
       for (int i = 0; i < groupColumns.length; i++) {
         for (CalendarEvent event in groupColumns[i]) {
-          // Simpan info layout dalam event (gunakan additionalData)
           Map<String, dynamic> layoutInfo = {
             'widthFraction': widthFraction,
             'columnIndex': i,
@@ -492,16 +503,12 @@ class MonthViewWidget extends StatelessWidget {
             'groupStartTime': group.startTime,
             'groupEndTime': group.endTime,
           };
-
-          // Update additionalData untuk setiap event
           CalendarEvent updatedEvent = event.copyWith(
             additionalData: {
               ...(event.additionalData ?? {}),
               'layoutInfo': layoutInfo
             },
           );
-
-          // Tambahkan ke final columns
           if (finalColumns.length <= i) {
             finalColumns.add([]);
           }
@@ -509,23 +516,17 @@ class MonthViewWidget extends StatelessWidget {
         }
       }
     }
-
     return finalColumns;
   }
 
-  // ✅ NEW: Group events yang overlap dalam time slots
   List<EventGroup> _groupOverlappingEvents(List<CalendarEvent> events) {
     List<EventGroup> groups = [];
-
     for (CalendarEvent event in events) {
       bool addedToGroup = false;
-
       for (EventGroup group in groups) {
-        // Cek apakah event ini overlap dengan group
         if (event.startTime.isBefore(group.endTime) &&
             event.endTime.isAfter(group.startTime)) {
           group.events.add(event);
-          // Update group time range
           if (event.startTime.isBefore(group.startTime)) {
             group.startTime = event.startTime;
           }
@@ -536,7 +537,6 @@ class MonthViewWidget extends StatelessWidget {
           break;
         }
       }
-
       if (!addedToGroup) {
         groups.add(EventGroup(
           startTime: event.startTime,
@@ -545,35 +545,15 @@ class MonthViewWidget extends StatelessWidget {
         ));
       }
     }
-
     return groups;
   }
 
-  int _countOverlaps(CalendarEvent event, List<CalendarEvent> columnEvents) {
-    int count = 0;
-    for (CalendarEvent existing in columnEvents) {
-      if (_eventsOverlap(event, existing)) count++;
-    }
-    return count;
-  }
-
   bool _eventsOverlap(CalendarEvent event1, CalendarEvent event2) {
-    // ✅ FIXED: Deteksi overlap yang lebih akurat
-    // Events overlap jika ada irisan waktu apapun
     DateTime start1 = event1.startTime;
     DateTime end1 = event1.endTime;
     DateTime start2 = event2.startTime;
     DateTime end2 = event2.endTime;
-
-    // Debug print untuk tracking overlap detection
-    bool overlaps = start1.isBefore(end2) && start2.isBefore(end1);
-
-    if (overlaps) {
-      print(
-          '🔄 Overlap detected: ${event1.title} (${start1.hour}:${start1.minute}-${end1.hour}:${end1.minute}) overlaps with ${event2.title} (${start2.hour}:${start2.minute}-${end2.hour}:${end2.minute})');
-    }
-
-    return overlaps;
+    return start1.isBefore(end2) && start2.isBefore(end1);
   }
 
   int _getWeekNumber(DateTime date) {
