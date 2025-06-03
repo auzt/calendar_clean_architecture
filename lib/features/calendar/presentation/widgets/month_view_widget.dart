@@ -25,12 +25,14 @@ class MonthViewWidget extends StatelessWidget {
   final DateTime month;
   final Function(DateTime) onDateTap;
   final Function(DateTime)? onDateLongPress;
+  final bool showEventPreview;
 
   const MonthViewWidget({
     super.key,
     required this.month,
     required this.onDateTap,
     this.onDateLongPress,
+    this.showEventPreview = true,
   });
 
   final int _displayStartTimeHour = 8;
@@ -209,8 +211,12 @@ class MonthViewWidget extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        if (hasAnyEvents) {
-          _showEventPreviewPopup(context, date, dayEvents);
+        if (showEventPreview && hasAnyEvents) {
+          _showEventPreviewPopup(context, date,
+              dayEvents); // Popup hanya jika showEventPreview = true
+        } else {
+          onDateTap(
+              date); // Langsung panggil onDateTap jika showEventPreview = false
         }
       },
       onLongPress: () => onDateLongPress?.call(date),
@@ -319,7 +325,7 @@ class MonthViewWidget extends StatelessWidget {
                             if (miniDayViewHeight <= (_arrowIconSize + 1)) {
                               // +1 for padding
                               return const SizedBox.shrink();
-                            }                            
+                            }
 
                             List<List<CalendarEvent>> eventColumns =
                                 _calculateEventLayoutForMiniView(
@@ -329,7 +335,7 @@ class MonthViewWidget extends StatelessWidget {
                                 (_displayEndTimeHour - _displayStartTimeHour)
                                     .toDouble();
                             if (totalWindowHours <= 0) totalWindowHours = 24.0;
-                            
+
                             double arrowSpace = (hasEventsBeforeDisplayStart ||
                                     hasEventsAfterDisplayEnd)
                                 ? (_arrowIconSize + 0.5)
@@ -439,14 +445,16 @@ class MonthViewWidget extends StatelessWidget {
                                     children: [
                                       if (hasEventsBeforeDisplayStart)
                                         Icon(Icons.arrow_drop_up,
-                                            size: _arrowIconSize * 0.7, // Mengecilkan ukuran ikon
+                                            size: _arrowIconSize *
+                                                0.7, // Mengecilkan ukuran ikon
                                             color: Colors.grey.shade700),
                                       if (hasEventsBeforeDisplayStart &&
                                           hasEventsAfterDisplayEnd)
                                         SizedBox(width: 2),
                                       if (hasEventsAfterDisplayEnd)
                                         Icon(Icons.arrow_drop_down,
-                                            size: _arrowIconSize * 0.7, // Mengecilkan ukuran ikon
+                                            size: _arrowIconSize *
+                                                0.7, // Mengecilkan ukuran ikon
                                             color: Colors.grey.shade700),
                                     ],
                                   ),

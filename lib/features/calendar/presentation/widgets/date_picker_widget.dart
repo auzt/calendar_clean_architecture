@@ -1,5 +1,5 @@
 // lib/features/calendar/presentation/widgets/date_picker_widget.dart
-// SIMPLE VERSION - Hanya MonthView asli + CANCEL/OK buttons
+// MENGGUNAKAN MonthViewWidget ASLI dengan parameter untuk disable popup
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,7 +7,6 @@ import '../../../../core/utils/date_utils.dart';
 import '../../domain/entities/calendar_date_range.dart';
 import '../bloc/calendar_bloc.dart';
 import '../bloc/calendar_event.dart' as calendar_events;
-import '../bloc/calendar_state.dart';
 import 'month_view_widget.dart';
 
 class DatePickerWidget extends StatefulWidget {
@@ -81,13 +80,23 @@ class _DatePickerWidgetState extends State<DatePickerWidget> {
   }
 
   void _onDateTap(DateTime date) {
+    // ✅ Validasi tidak bisa pilih tanggal sebelum hari ini
+    final today = DateTime.now();
+    final todayStart = DateTime(today.year, today.month, today.day);
+    final selectedStart = DateTime(date.year, date.month, date.day);
+
+    if (selectedStart.isBefore(todayStart)) {
+      // Jangan lakukan apa-apa jika tanggal sebelum hari ini
+      return;
+    }
+
     // Cek apakah tanggal dalam range yang diizinkan
     if (widget.minDate != null && date.isBefore(widget.minDate!)) {
-      return; // Silent fail untuk date yang tidak valid
+      return;
     }
 
     if (widget.maxDate != null && date.isAfter(widget.maxDate!)) {
-      return; // Silent fail untuk date yang tidak valid
+      return;
     }
 
     setState(() {
@@ -101,157 +110,153 @@ class _DatePickerWidgetState extends State<DatePickerWidget> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      insetPadding:
-          const EdgeInsets.all(16), // Kurangi padding untuk popup lebih besar
+      insetPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+      backgroundColor: Colors.transparent,
       child: Container(
         width: double.maxFinite,
-        height: MediaQuery.of(context).size.height *
-            0.85, // ✅ POPUP LEBIH TINGGI (85%)
+        height: MediaQuery.of(context).size.height - 20,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Column(
           children: [
-            // ✅ HEADER BULAN/TAHUN dengan navigation
-            _buildMonthYearHeader(),
+            // ✅ HEADER sederhana - hanya nama bulan tahun
+            _buildCleanHeader(),
 
-            // ✅ MONTH VIEW EXPANDED - Grid full ke bawah
+            // ✅ MonthViewWidget ASLI dengan parameter untuk disable popup
             Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  final monthOffset = index - 1000;
-                  final newMonth = DateTime(
-                    DateTime.now().year,
-                    DateTime.now().month + monthOffset,
-                  );
-                  _onMonthChanged(newMonth);
-                },
-                itemBuilder: (context, index) {
-                  final monthOffset = index - 1000;
-                  final month = DateTime(
-                    DateTime.now().year,
-                    DateTime.now().month + monthOffset,
-                  );
-                  return _buildPureMonthView(month);
-                },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (index) {
+                    final monthOffset = index - 1000;
+                    final newMonth = DateTime(
+                      DateTime.now().year,
+                      DateTime.now().month + monthOffset,
+                    );
+                    _onMonthChanged(newMonth);
+                  },
+                  itemBuilder: (context, index) {
+                    final monthOffset = index - 1000;
+                    final month = DateTime(
+                      DateTime.now().year,
+                      DateTime.now().month + monthOffset,
+                    );
+                    return _buildMonthViewWithSelection(month);
+                  },
+                ),
               ),
             ),
 
-            // ✅ SIMPLE BUTTONS - CANCEL & OK
-            _buildSimpleButtons(),
+            // ✅ BOTTOM BUTTONS rapat
+            _buildCleanButtons(),
           ],
         ),
       ),
     );
   }
 
-  // ✅ HEADER dengan bulan/tahun dan navigation
-  Widget _buildMonthYearHeader() {
+  Widget _buildCleanHeader() {
+    final monthYear =
+        "${_getMonthName(_currentMonth.month)} ${_currentMonth.year}";
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: const Color(0xFFB8E6E6),
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(8),
-          topRight: Radius.circular(8),
-        ),
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.shade300),
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          IconButton(
-            onPressed: () {
-              _pageController.previousPage(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
-            },
-            icon: const Icon(Icons.chevron_left, size: 24),
-            tooltip: 'Bulan Sebelumnya',
+      child: Center(
+        child: Text(
+          monthYear,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
           ),
-          Text(
-            AppDateUtils.formatDisplayDate(_currentMonth).split(',')[1].trim(),
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          IconButton(
-            onPressed: () {
-              _pageController.nextPage(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
-            },
-            icon: const Icon(Icons.chevron_right, size: 24),
-            tooltip: 'Bulan Selanjutnya',
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  // ✅ MonthView MURNI tanpa modifikasi apapun
-  Widget _buildPureMonthView(DateTime month) {
-    return SimpleMonthViewWrapper(
-      month: month,
-      selectedDate: _selectedDate,
-      onDateTap: _onDateTap,
-      showEvents: widget.showEvents,
+  Widget _buildMonthViewWithSelection(DateTime month) {
+    return Stack(
+      children: [
+        // ✅ MonthViewWidget ASLI dengan parameter showEventPreview: false
+        MonthViewWidget(
+          month: month,
+          onDateTap: _onDateTap,
+          onDateLongPress: null, // Disable long press
+          showEventPreview:
+              false, // ✅ PARAMETER BARU untuk disable popup preview
+        ),
+
+        // ✅ Selection overlay
+        _buildSelectionOverlay(),
+      ],
     );
   }
 
-  Widget _buildSimpleButtons() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade300),
-        ),
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(8),
-          bottomRight: Radius.circular(8),
+  Widget _buildSelectionOverlay() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: CleanSelectionPainter(
+            month: _currentMonth,
+            selectedDate: _selectedDate,
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildCleanButtons() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 20, right: 20, bottom: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              minimumSize: const Size(80, 40),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              minimumSize: const Size(70, 28),
             ),
             child: const Text(
               'CANCEL',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey,
+                color: Colors.black54,
                 letterSpacing: 0.5,
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           TextButton(
             onPressed: () => Navigator.pop(context, _selectedDate),
             style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              minimumSize: const Size(80, 40),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              minimumSize: const Size(70, 28),
             ),
             child: const Text(
               'OK',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.blue,
+                color: Colors.black54,
                 letterSpacing: 0.5,
               ),
             ),
@@ -260,67 +265,39 @@ class _DatePickerWidgetState extends State<DatePickerWidget> {
       ),
     );
   }
-}
 
-// ✅ WRAPPER sederhana untuk MonthViewWidget
-class SimpleMonthViewWrapper extends StatelessWidget {
-  final DateTime month;
-  final DateTime selectedDate;
-  final Function(DateTime) onDateTap;
-  final bool showEvents;
-
-  const SimpleMonthViewWrapper({
-    super.key,
-    required this.month,
-    required this.selectedDate,
-    required this.onDateTap,
-    this.showEvents = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // ✅ MonthViewWidget ASLI 100% tanpa perubahan
-        MonthViewWidget(
-          month: month,
-          onDateTap: onDateTap,
-          onDateLongPress: null, // Disable long press
-        ),
-
-        // ✅ Selection indicator yang sangat minimal
-        _buildVeryMinimalSelection(),
-      ],
-    );
-  }
-
-  Widget _buildVeryMinimalSelection() {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: CustomPaint(
-          painter: VeryMinimalSelectionPainter(
-            month: month,
-            selectedDate: selectedDate,
-          ),
-        ),
-      ),
-    );
+  String _getMonthName(int month) {
+    const months = [
+      '',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
+    return months[month];
   }
 }
 
-// ✅ PAINTER yang sangat minimal untuk selected date
-class VeryMinimalSelectionPainter extends CustomPainter {
+// ✅ SELECTION PAINTER untuk highlight tanggal yang dipilih
+class CleanSelectionPainter extends CustomPainter {
   final DateTime month;
   final DateTime selectedDate;
 
-  VeryMinimalSelectionPainter({
+  const CleanSelectionPainter({
     required this.month,
     required this.selectedDate,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Cari posisi tanggal yang dipilih
     final firstDayOfMonth = DateTime(month.year, month.month, 1);
     final firstWeekdayOffset = (firstDayOfMonth.weekday + 6) % 7;
     final startDate =
@@ -337,8 +314,7 @@ class VeryMinimalSelectionPainter extends CustomPainter {
 
     if (selectedIndex == null) return;
 
-    // ✅ Kalkulasi posisi grid yang tepat - sesuai dengan MonthViewWidget
-    final headerHeight = size.height * 0.08; // Header weekdays yang lebih kecil
+    final headerHeight = size.height * 0.08;
     final gridHeight = size.height - headerHeight;
     final cellWidth = size.width / 7;
     final cellHeight = gridHeight / 6;
@@ -353,36 +329,27 @@ class VeryMinimalSelectionPainter extends CustomPainter {
       cellHeight,
     );
 
-    // ✅ Highlight background biru transparan
+    // ✅ Background kuning muda untuk selected
     final highlightPaint = Paint()
-      ..color = Colors.blue.withOpacity(0.15)
+      ..color = const Color(0xFFFFF9C4)
       ..style = PaintingStyle.fill;
 
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        cellRect.deflate(3),
-        const Radius.circular(6),
-      ),
-      highlightPaint,
-    );
+    canvas.drawRect(cellRect, highlightPaint);
 
-    // ✅ Border biru solid seperti di screenshot
+    // ✅ Border biru muda
     final borderPaint = Paint()
-      ..color = Colors.blue
+      ..color = const Color(0xFF4FC3F7)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
+      ..strokeWidth = 2.0;
 
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        cellRect.deflate(3),
-        const Radius.circular(6),
-      ),
+    canvas.drawRect(
+      cellRect.deflate(1),
       borderPaint,
     );
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
+    return true;
   }
 }
