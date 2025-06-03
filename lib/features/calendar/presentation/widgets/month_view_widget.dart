@@ -40,6 +40,16 @@ class MonthViewWidget extends StatelessWidget {
   final double _fullDayEventHeight = 3.0;
   final double _minTimedEventHeight = 1.5;
 
+  // Adjusted height for full-day section:
+  // 3 bars * (3.0 height + 0.5 bottom margin) = 10.5.
+  // Plus top padding of 1.0 for the Positioned full-day section.
+  // This means the date row will start after this space.
+  final double _fixedFullDaySectionHeight = 11.5;
+  final double _arrowIconSize = 18.0;
+  final double _dateNumberFontSize = 16.0;
+  final double _weekNumberFontSize = 11.0;
+  final Color _weekNumberFontColor = Colors.black87;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -52,7 +62,6 @@ class MonthViewWidget extends StatelessWidget {
 
   Widget _buildWeekdayHeaders() {
     const weekdays = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -105,31 +114,33 @@ class MonthViewWidget extends StatelessWidget {
                 crossAxisCount: 7,
                 childAspectRatio: calculatedAspectRatio,
               ),
-              itemCount: 42, // 6 weeks * 7 days
+              itemCount: 42,
               physics: const NeverScrollableScrollPhysics(),
               itemBuilder: (context, index) {
                 final date = _getDateForIndex(index);
                 final dayEvents = _getEventsForDate(events, date);
+                Widget cellContent = _buildDateCell(context, date, dayEvents);
 
                 if (index % 7 == 0) {
                   return Stack(
                     children: [
-                      _buildDateCell(context, date, dayEvents),
+                      cellContent,
                       Positioned(
                         left: 3,
                         bottom: 3,
                         child: Text(
                           '${_getWeekNumber(date)}',
                           style: TextStyle(
-                            fontSize: 9,
-                            color: Colors.grey.shade400,
+                            fontSize: _weekNumberFontSize,
+                            color: _weekNumberFontColor,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
                     ],
                   );
                 }
-                return _buildDateCell(context, date, dayEvents);
+                return cellContent;
               },
             );
           },
@@ -164,7 +175,6 @@ class MonthViewWidget extends StatelessWidget {
 
     List<CalendarEvent> fullDayTypeEvents = [];
     List<CalendarEvent> timedEvents = [];
-
     bool hasEventsBeforeDisplayStart = false;
     bool hasEventsAfterDisplayEnd = false;
 
@@ -186,8 +196,6 @@ class MonthViewWidget extends StatelessWidget {
               (event.endTime.hour == _displayEndTimeHour &&
                   event.endTime.minute > 0) ||
               event.startTime.hour >= _displayEndTimeHour) {
-            // If an event ends exactly at _displayEndTimeHour:00 but started before, it's within visible part.
-            // So, only flag if it truly spills over or starts at/after _displayEndTimeHour.
             if (!(event.endTime.hour == _displayEndTimeHour &&
                 event.endTime.minute == 0 &&
                 event.startTime.hour < _displayEndTimeHour)) {
@@ -197,11 +205,6 @@ class MonthViewWidget extends StatelessWidget {
         }
       }
       timedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
-    }
-
-    Color cellBackgroundColor = Colors.transparent;
-    if (isActualToday) {
-      cellBackgroundColor = Colors.yellow.shade300;
     }
 
     return GestureDetector(
@@ -216,75 +219,86 @@ class MonthViewWidget extends StatelessWidget {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: cellBackgroundColor,
+          color: isActualToday ? Colors.yellow.shade300 : Colors.transparent,
           border: Border(
             top: BorderSide(color: Colors.grey.shade300, width: 0.5),
             left: BorderSide(color: Colors.grey.shade300, width: 0.5),
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Stack(
           children: [
-            // Full day events section (max 3)
+            // Full Day Events Area
             if (isCurrentMonth && fullDayTypeEvents.isNotEmpty)
-              ...fullDayTypeEvents.take(_maxVisibleFullDayEvents).map(
-                    (event) => Container(
-                      height: _fullDayEventHeight,
-                      margin: const EdgeInsets.only(
-                          left: 2, right: 2, top: 1, bottom: 0.5),
-                      decoration: BoxDecoration(
-                        color: event.color,
-                        borderRadius: BorderRadius.circular(1.5),
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 0.3,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 0.3,
-                            offset: const Offset(0, 0.3),
+              Positioned(
+                top: 1.0, // Padding from the cell top
+                left: 2.0,
+                right: 2.0,
+                // Height is not fixed here, let Column decide based on content up to _fixedFullDaySectionHeight
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ...fullDayTypeEvents.take(_maxVisibleFullDayEvents).map(
+                          (event) => Container(
+                            height: _fullDayEventHeight,
+                            margin: const EdgeInsets.only(bottom: 0.5),
+                            decoration: BoxDecoration(
+                              color: event.color,
+                              borderRadius: BorderRadius.circular(1.5),
+                              border:
+                                  Border.all(color: Colors.white, width: 0.3),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 0.3,
+                                  offset: const Offset(0, 0.3),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
+                        ),
+                    if (fullDayTypeEvents.length > _maxVisibleFullDayEvents)
+                      Container(
+                        height: _fullDayEventHeight,
+                        margin: const EdgeInsets.only(
+                            top: 0.5, bottom: 0.5), // Added top margin
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade500,
+                          borderRadius: BorderRadius.circular(1.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '+${fullDayTypeEvents.length - _maxVisibleFullDayEvents} more',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 5,
+                                fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-            if (isCurrentMonth &&
-                fullDayTypeEvents.length > _maxVisibleFullDayEvents)
-              Container(
-                height: _fullDayEventHeight,
-                margin: const EdgeInsets.only(
-                    left: 2, right: 2, top: 0.5, bottom: 0.5),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade500,
-                  borderRadius: BorderRadius.circular(1.5),
-                ),
-                child: Center(
-                  child: Text(
-                    '+${fullDayTypeEvents.length - _maxVisibleFullDayEvents} more',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  ],
                 ),
               ),
-            Expanded(
+            // Date Number and Mini Schedule Row
+            Positioned(
+              top: _fixedFullDaySectionHeight,
+              left: 0,
+              right: 0,
+              bottom: 0,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Date number: Font larger, padded more from top
                   Padding(
                     padding: const EdgeInsets.only(
-                        top: 4.0,
+                        top: 0.5,
                         left: 4.0,
-                        right: 2.0), // Increased top padding
+                        right:
+                            2.0), // Reduced top padding, reduced right padding
                     child: Text(
                       '${date.day}',
                       style: TextStyle(
-                        fontSize: 15, // Increased font size
+                        fontSize: _dateNumberFontSize,
                         fontWeight: isActualToday && isCurrentMonth
                             ? FontWeight.bold
                             : FontWeight.normal,
@@ -294,158 +308,160 @@ class MonthViewWidget extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Mini schedule area
                   if (isCurrentMonth && timedEvents.isNotEmpty)
                     Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          double miniDayViewHeight = constraints.maxHeight;
-                          if (miniDayViewHeight <= 10) {
-                            return const SizedBox.shrink();
-                          }
+                      child: Container(
+                        margin: const EdgeInsets.only(
+                            right: 1.5), // Ensure no overflow
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            double miniDayViewHeight = constraints.maxHeight;
+                            if (miniDayViewHeight <= (_arrowIconSize + 1)) {
+                              // +1 for padding
+                              return const SizedBox.shrink();
+                            }
 
-                          List<List<CalendarEvent>> eventColumns =
-                              _calculateEventLayoutForMiniView(
-                                  timedEvents, _maxEventColumnsInMiniView);
+                            List<List<CalendarEvent>> eventColumns =
+                                _calculateEventLayoutForMiniView(
+                                    timedEvents, _maxEventColumnsInMiniView);
+                            List<Widget> positionedEventBlocks = [];
+                            double totalWindowHours =
+                                (_displayEndTimeHour - _displayStartTimeHour)
+                                    .toDouble();
+                            if (totalWindowHours <= 0) totalWindowHours = 24.0;
 
-                          List<Widget> positionedEventBlocks = [];
-                          double totalWindowHours =
-                              (_displayEndTimeHour - _displayStartTimeHour)
-                                  .toDouble();
+                            double arrowSpace = (hasEventsBeforeDisplayStart ||
+                                    hasEventsAfterDisplayEnd)
+                                ? (_arrowIconSize + 0.5)
+                                : 0; // Adjusted for bottom:0
+                            double drawableHeight =
+                                miniDayViewHeight - arrowSpace;
+                            if (drawableHeight <= 0) return SizedBox.shrink();
 
-                          if (totalWindowHours <= 0) {
-                            totalWindowHours = 24.0;
-                          }
+                            for (int colIdx = 0;
+                                colIdx < eventColumns.length;
+                                colIdx++) {
+                              for (CalendarEvent event
+                                  in eventColumns[colIdx]) {
+                                Map<String, dynamic>? layoutInfo =
+                                    event.additionalData?['layoutInfo']
+                                        as Map<String, dynamic>?;
+                                double widthFraction =
+                                    layoutInfo?['widthFraction'] ??
+                                        (1.0 / eventColumns.length);
+                                int columnIndex =
+                                    layoutInfo?['columnIndex'] ?? colIdx;
 
-                          double drawableHeight = miniDayViewHeight - 2;
+                                double eventStartHour = event.startTime.hour +
+                                    event.startTime.minute / 60.0;
+                                double eventEndHour = event.endTime.hour +
+                                    event.endTime.minute / 60.0;
+                                if (eventEndHour <= eventStartHour)
+                                  eventEndHour = eventStartHour + 0.5;
 
-                          for (int colIdx = 0;
-                              colIdx < eventColumns.length;
-                              colIdx++) {
-                            for (CalendarEvent event in eventColumns[colIdx]) {
-                              Map<String, dynamic>? layoutInfo =
-                                  event.additionalData?['layoutInfo']
-                                      as Map<String, dynamic>?;
+                                double windowStartHour =
+                                    _displayStartTimeHour.toDouble();
+                                double windowEndHour =
+                                    _displayEndTimeHour.toDouble();
+                                double displayStartHour =
+                                    max(eventStartHour, windowStartHour);
+                                double displayEndHour =
+                                    min(eventEndHour, windowEndHour);
 
-                              double widthFraction =
-                                  layoutInfo?['widthFraction'] ??
-                                      (1.0 / eventColumns.length);
-                              int columnIndex =
-                                  layoutInfo?['columnIndex'] ?? colIdx;
+                                if (displayEndHour <= displayStartHour)
+                                  continue;
 
-                              double eventStartHour = event.startTime.hour +
-                                  event.startTime.minute / 60.0;
-                              double eventEndHour = event.endTime.hour +
-                                  event.endTime.minute / 60.0;
+                                double relativeStart =
+                                    (displayStartHour - windowStartHour) /
+                                        totalWindowHours;
+                                double relativeEnd =
+                                    (displayEndHour - windowStartHour) /
+                                        totalWindowHours;
+                                double top = relativeStart * drawableHeight;
+                                double height = (relativeEnd - relativeStart) *
+                                    drawableHeight;
+                                height = max(_minTimedEventHeight, height);
 
-                              if (eventEndHour <= eventStartHour) {
-                                eventEndHour = eventStartHour + 0.5;
+                                if (top < 0) {
+                                  height += top;
+                                  top = 0;
+                                }
+                                if (top + height > drawableHeight)
+                                  height = drawableHeight - top;
+                                if (height <= 0) continue;
+
+                                double totalAvailableWidth =
+                                    constraints.maxWidth;
+                                double eventWidth =
+                                    totalAvailableWidth * widthFraction;
+                                double eventLeft = totalAvailableWidth *
+                                    (columnIndex * widthFraction);
+
+                                positionedEventBlocks.add(
+                                  Positioned(
+                                    top: top,
+                                    left: eventLeft,
+                                    width: max(
+                                        0,
+                                        eventWidth -
+                                            0.5), // Ensure width is not negative
+                                    height: height,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: event.color.withOpacity(0.9),
+                                        borderRadius: BorderRadius.circular(1),
+                                        border: Border.all(
+                                            color: Colors.white, width: 0.5),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.15),
+                                            blurRadius: 0.5,
+                                            offset: const Offset(0, 0.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
                               }
+                            }
 
-                              double windowStartHour =
-                                  _displayStartTimeHour.toDouble();
-                              double windowEndHour =
-                                  _displayEndTimeHour.toDouble();
-
-                              double displayStartHour =
-                                  max(eventStartHour, windowStartHour);
-                              double displayEndHour =
-                                  min(eventEndHour, windowEndHour);
-
-                              if (displayEndHour <= displayStartHour) continue;
-
-                              double relativeStart =
-                                  (displayStartHour - windowStartHour) /
-                                      totalWindowHours;
-                              double relativeEnd =
-                                  (displayEndHour - windowStartHour) /
-                                      totalWindowHours;
-
-                              double top = relativeStart * drawableHeight;
-                              double height = (relativeEnd - relativeStart) *
-                                  drawableHeight;
-                              height = max(_minTimedEventHeight, height);
-
-                              if (top < 0) {
-                                height += top;
-                                top = 0;
-                              }
-                              if (top + height > drawableHeight) {
-                                height = drawableHeight - top;
-                              }
-                              if (height <= 0) continue;
-
-                              double totalAvailableWidth =
-                                  constraints.maxWidth - 1;
-                              double eventWidth =
-                                  totalAvailableWidth * widthFraction;
-                              double eventLeft = totalAvailableWidth *
-                                  (columnIndex * widthFraction);
-
+                            if (hasEventsBeforeDisplayStart ||
+                                hasEventsAfterDisplayEnd) {
                               positionedEventBlocks.add(
                                 Positioned(
-                                  top: top,
-                                  left: eventLeft,
-                                  width: eventWidth - 0.5,
-                                  height: height,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: event.color.withOpacity(0.9),
-                                      borderRadius: BorderRadius.circular(1),
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 0.5,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.15),
-                                          blurRadius: 0.5,
-                                          offset: const Offset(0, 0.5),
-                                        ),
-                                      ],
-                                    ),
+                                  bottom: 0.0, // Mepet ke bawah
+                                  left: 0,
+                                  right: 0,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      if (hasEventsBeforeDisplayStart)
+                                        Icon(Icons.arrow_drop_up,
+                                            size: _arrowIconSize,
+                                            color: Colors.grey.shade700),
+                                      if (hasEventsBeforeDisplayStart &&
+                                          hasEventsAfterDisplayEnd)
+                                        SizedBox(width: 2),
+                                      if (hasEventsAfterDisplayEnd)
+                                        Icon(Icons.arrow_drop_down,
+                                            size: _arrowIconSize,
+                                            color: Colors.grey.shade700),
+                                    ],
                                   ),
                                 ),
                               );
                             }
-                          }
-                          // ADDED: Combined arrow indicators at the bottom
-                          if (hasEventsBeforeDisplayStart ||
-                              hasEventsAfterDisplayEnd) {
-                            positionedEventBlocks.add(
-                              Positioned(
-                                bottom: 1, // Small padding from the bottom
-                                left: 0,
-                                right: 0,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    if (hasEventsBeforeDisplayStart) // Show up arrow only if relevant
-                                      Icon(Icons.arrow_drop_up,
-                                          size: 12,
-                                          color: Colors.grey.shade700),
-                                    if (hasEventsBeforeDisplayStart &&
-                                        hasEventsAfterDisplayEnd) // spacing if both shown
-                                      SizedBox(width: 2),
-                                    if (hasEventsAfterDisplayEnd) // Show down arrow only if relevant
-                                      Icon(Icons.arrow_drop_down,
-                                          size: 12,
-                                          color: Colors.grey.shade700),
-                                  ],
-                                ),
-                              ),
+                            return Container(
+                              margin: const EdgeInsets.only(
+                                  top: 0.5,
+                                  bottom: 0.5), // Minor vertical margin
+                              width: double.infinity,
+                              child: Stack(children: positionedEventBlocks),
                             );
-                          }
-
-                          return Container(
-                            margin: const EdgeInsets.only(
-                                top: 1, right: 1, bottom: 1),
-                            width: double.infinity,
-                            child: Stack(
-                              children: positionedEventBlocks,
-                            ),
-                          );
-                        },
+                          },
+                        ),
                       ),
                     )
                   else
@@ -462,16 +478,13 @@ class MonthViewWidget extends StatelessWidget {
   List<List<CalendarEvent>> _calculateEventLayoutForMiniView(
       List<CalendarEvent> events, int maxColumns) {
     if (events.isEmpty) return [];
-
     List<CalendarEvent> sortedEvents = List.from(events)
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
-
     List<EventGroup> eventGroups = _groupOverlappingEvents(sortedEvents);
     List<List<CalendarEvent>> finalColumns = [];
 
     for (EventGroup group in eventGroups) {
       List<List<CalendarEvent>> groupColumns = [];
-
       for (CalendarEvent event in group.events) {
         bool placed = false;
         for (int i = 0; i < groupColumns.length; i++) {
@@ -488,12 +501,11 @@ class MonthViewWidget extends StatelessWidget {
             break;
           }
         }
-        if (!placed) {
-          groupColumns.add([event]);
-        }
+        if (!placed) groupColumns.add([event]);
       }
 
-      double widthFraction = 1.0 / groupColumns.length;
+      double widthFraction =
+          groupColumns.isEmpty ? 1.0 : 1.0 / groupColumns.length;
       for (int i = 0; i < groupColumns.length; i++) {
         for (CalendarEvent event in groupColumns[i]) {
           Map<String, dynamic> layoutInfo = {
@@ -509,9 +521,7 @@ class MonthViewWidget extends StatelessWidget {
               'layoutInfo': layoutInfo
             },
           );
-          if (finalColumns.length <= i) {
-            finalColumns.add([]);
-          }
+          if (finalColumns.length <= i) finalColumns.add([]);
           finalColumns[i].add(updatedEvent);
         }
       }
@@ -527,12 +537,10 @@ class MonthViewWidget extends StatelessWidget {
         if (event.startTime.isBefore(group.endTime) &&
             event.endTime.isAfter(group.startTime)) {
           group.events.add(event);
-          if (event.startTime.isBefore(group.startTime)) {
+          if (event.startTime.isBefore(group.startTime))
             group.startTime = event.startTime;
-          }
-          if (event.endTime.isAfter(group.endTime)) {
+          if (event.endTime.isAfter(group.endTime))
             group.endTime = event.endTime;
-          }
           addedToGroup = true;
           break;
         }
@@ -549,11 +557,8 @@ class MonthViewWidget extends StatelessWidget {
   }
 
   bool _eventsOverlap(CalendarEvent event1, CalendarEvent event2) {
-    DateTime start1 = event1.startTime;
-    DateTime end1 = event1.endTime;
-    DateTime start2 = event2.startTime;
-    DateTime end2 = event2.endTime;
-    return start1.isBefore(end2) && start2.isBefore(end1);
+    return event1.startTime.isBefore(event2.endTime) &&
+        event2.startTime.isBefore(event1.endTime);
   }
 
   int _getWeekNumber(DateTime date) {
@@ -570,25 +575,21 @@ class MonthViewWidget extends StatelessWidget {
   void _showEventPreviewPopup(
       BuildContext context, DateTime date, List<CalendarEvent> events) {
     if (events.isEmpty) return;
-
     events.sort((a, b) => a.startTime.compareTo(b.startTime));
-
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.calendar_today, color: Colors.blue, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  "${DateFormat('EEE, d MMM yy').format(date)} (${events.length} events)",
-                  style: const TextStyle(fontSize: 16),
-                ),
+          title: Row(children: [
+            Icon(Icons.calendar_today, color: Colors.blue, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                "${DateFormat('EEE, d MMM yy').format(date)} (${events.length} events)",
+                style: const TextStyle(fontSize: 16),
               ),
-            ],
-          ),
+            ),
+          ]),
           contentPadding: const EdgeInsets.fromLTRB(12.0, 16.0, 12.0, 8.0),
           content: SizedBox(
             width: double.maxFinite,
@@ -603,7 +604,6 @@ class MonthViewWidget extends StatelessWidget {
                         event.endTime.hour == 23 &&
                         event.endTime.minute == 59 &&
                         AppDateUtils.isSameDay(event.startTime, event.endTime));
-
                 return Card(
                   elevation: 1.0,
                   margin: const EdgeInsets.symmetric(vertical: 3.0),
@@ -614,15 +614,11 @@ class MonthViewWidget extends StatelessWidget {
                       width: 12,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: event.color,
-                        shape: BoxShape.circle,
-                      ),
+                          color: event.color, shape: BoxShape.circle),
                     ),
-                    title: Text(
-                      event.title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w500, fontSize: 14),
-                    ),
+                    title: Text(event.title,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w500, fontSize: 14)),
                     subtitle: Text(
                       isFullDay
                           ? "Sepanjang hari"
@@ -644,18 +640,14 @@ class MonthViewWidget extends StatelessWidget {
               onPressed: () {
                 Navigator.of(context).pop();
                 Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => DayViewPage(initialDate: date),
-                  ),
-                );
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => DayViewPage(initialDate: date)));
               },
             ),
             TextButton(
               child: const Text("Tutup"),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(context).pop(),
             ),
           ],
         );
