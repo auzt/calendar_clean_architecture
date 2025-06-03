@@ -35,8 +35,8 @@ class MonthViewWidget extends StatelessWidget {
   });
 
   // ✅ IMPROVED: Constants untuk tampilkan lebih banyak events
-  final int _displayStartTimeHour = 6;
-  final int _displayEndTimeHour = 22;
+  final int _displayStartTimeHour = 8;
+  final int _displayEndTimeHour = 15;
   final int _maxEventColumnsInMiniView =
       6; // ✅ INCREASED: Lebih banyak kolom untuk 4+ events
   final int _maxVisibleFullDayEvents = 3;

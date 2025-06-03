@@ -30,9 +30,10 @@ class DayViewWidget extends StatefulWidget {
 
 class _DayViewWidgetState extends State<DayViewWidget> {
   late ScrollController _scrollController;
-  final double _hourHeight = 60.0;
-  final double _timeColumnWidth = 80.0;
-  final int _minuteInterval = 5;
+  final double hourHeight = 60.0;
+  final double timeColumnWidth = 80.0;
+  final int minuteInterval = 5;
+  final GlobalKey _scrollKey = GlobalKey();
 
   // Drag state
   bool _isDragging = false;
@@ -42,10 +43,9 @@ class _DayViewWidgetState extends State<DayViewWidget> {
 
   // Auto-scroll variables
   Timer? _autoScrollTimer;
-  bool _isAutoScrolling = false;
-  final double _baseAutoScrollZone = 80.0;
-  final double _autoScrollSpeed = 2.5;
-  double _currentAutoScrollZone = 80.0;
+  double _autoScrollVelocity = 0.0;
+  static const double _kAutoScrollPixelsPerTick = 8.0;
+  static const Duration _kAutoScrollTimerDuration = Duration(milliseconds: 16);
 
   // Separate events
   List<CalendarEvent> _fullDayEvents = [];
@@ -57,7 +57,6 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     _scrollController = ScrollController();
     _separateEvents();
 
-    // Add listener untuk scroll position
     _scrollController.addListener(() {
       if (!_isDragging && widget.onScrollPositionChanged != null) {
         widget.onScrollPositionChanged!(_scrollController.offset);
@@ -83,8 +82,8 @@ class _DayViewWidgetState extends State<DayViewWidget> {
 
   @override
   void dispose() {
-    _autoScrollTimer?.cancel();
     _scrollController.dispose();
+    _autoScrollTimer?.cancel();
     super.dispose();
   }
 
@@ -93,22 +92,19 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     _timedEvents = [];
 
     for (var event in widget.events) {
-      if (event.isAllDay ||
-          (event.startTime.hour == 0 &&
-              event.startTime.minute == 0 &&
-              event.endTime.hour == 23 &&
-              event.endTime.minute == 59 &&
-              AppDateUtils.isSameDay(event.startTime, event.endTime))) {
+      if (event.isAllDay) {
         _fullDayEvents.add(event);
       } else {
         _timedEvents.add(event);
       }
     }
+
+    // Sort timed events by start time
+    _timedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
   }
 
   void _scrollToPosition(double position) {
     if (!_scrollController.hasClients) return;
-
     _scrollController.animateTo(
       position,
       duration: const Duration(milliseconds: 300),
@@ -124,9 +120,9 @@ class _DayViewWidgetState extends State<DayViewWidget> {
 
     double targetPosition;
     if (isToday) {
-      targetPosition = (now.hour * _hourHeight) - 100;
+      targetPosition = (now.hour * hourHeight) - 100;
     } else {
-      targetPosition = (8 * _hourHeight) - 100; // 8 AM for other days
+      targetPosition = (8 * hourHeight) - 100; // 8 AM for other days
     }
 
     if (targetPosition < 0) targetPosition = 0;
@@ -138,75 +134,40 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     );
   }
 
-  void _startAutoScroll(double globalY) {
-    if (_isAutoScrolling) return;
+  void _manageAutoScrollTimer() {
+    if (_autoScrollVelocity != 0.0 && _isDragging) {
+      if (_autoScrollTimer == null || !_autoScrollTimer!.isActive) {
+        _autoScrollTimer = Timer.periodic(_kAutoScrollTimerDuration, (timer) {
+          if (!_isDragging || _autoScrollVelocity == 0.0) {
+            timer.cancel();
+            _autoScrollTimer = null;
+            return;
+          }
 
-    _autoScrollTimer?.cancel();
+          if (_scrollController.hasClients) {
+            double currentOffset = _scrollController.offset;
+            double newOffset = (currentOffset + _autoScrollVelocity).clamp(
+              _scrollController.position.minScrollExtent,
+              _scrollController.position.maxScrollExtent,
+            );
 
-    _calculateAutoScrollZone();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      double appBarHeight = kToolbarHeight;
-      double statusBarHeight = MediaQuery.of(context).padding.top;
-      double fullDayEventsHeight = _fullDayEvents.isNotEmpty
-          ? (_fullDayEvents.length * 25.0) + 40.0
-          : 0.0;
-
-      double effectiveTop =
-          statusBarHeight + appBarHeight + fullDayEventsHeight;
-      double effectiveBottom = MediaQuery.of(context).size.height - 100;
-
-      bool shouldScrollUp = globalY < (effectiveTop + _currentAutoScrollZone);
-      bool shouldScrollDown =
-          globalY > (effectiveBottom - _currentAutoScrollZone);
-
-      if (!shouldScrollUp && !shouldScrollDown) {
-        _stopAutoScroll();
-        return;
+            if (currentOffset != newOffset) {
+              _scrollController.jumpTo(newOffset);
+            } else {
+              // Mencapai batas scroll, hentikan timer untuk arah ini
+              timer.cancel();
+              _autoScrollTimer = null;
+            }
+          } else {
+            // No clients, cancel timer
+            timer.cancel();
+            _autoScrollTimer = null;
+          }
+        });
       }
-
-      _isAutoScrolling = true;
-
-      _autoScrollTimer =
-          Timer.periodic(const Duration(milliseconds: 16), (timer) {
-        if (!_scrollController.hasClients || !_isDragging || !mounted) {
-          _stopAutoScroll();
-          return;
-        }
-
-        double currentOffset = _scrollController.offset;
-        double newOffset;
-
-        if (shouldScrollUp) {
-          newOffset = (currentOffset - _autoScrollSpeed)
-              .clamp(0.0, _scrollController.position.maxScrollExtent);
-        } else {
-          newOffset = (currentOffset + _autoScrollSpeed)
-              .clamp(0.0, _scrollController.position.maxScrollExtent);
-        }
-
-        if (newOffset != currentOffset) {
-          _scrollController.jumpTo(newOffset);
-        } else {
-          _stopAutoScroll();
-        }
-      });
-    });
-  }
-
-  void _calculateAutoScrollZone() {
-    double adjustment = _fullDayEvents.length * 5.0;
-    _currentAutoScrollZone =
-        (_baseAutoScrollZone + adjustment).clamp(60.0, 120.0);
-  }
-
-  void _stopAutoScroll() {
-    if (_autoScrollTimer != null) {
+    } else {
       _autoScrollTimer?.cancel();
       _autoScrollTimer = null;
-      _isAutoScrolling = false;
     }
   }
 
@@ -223,9 +184,10 @@ class _DayViewWidgetState extends State<DayViewWidget> {
             child: Stack(
               children: [
                 SingleChildScrollView(
+                  key: _scrollKey,
                   controller: _scrollController,
                   child: SizedBox(
-                    height: 24 * _hourHeight,
+                    height: 24 * hourHeight,
                     child: Row(
                       children: [
                         _buildTimeColumn(),
@@ -234,7 +196,6 @@ class _DayViewWidgetState extends State<DayViewWidget> {
                     ),
                   ),
                 ),
-                // Drag indicator
                 if (_isDragging && _dragTargetTime != null)
                   _buildDragTimeIndicator(),
               ],
@@ -289,29 +250,15 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       ),
       child: GestureDetector(
         onTap: () => widget.onEventTap(event),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                event.title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (event.location != null) ...[
-              const SizedBox(width: 8),
-              Icon(
-                Icons.location_on,
-                color: Colors.white.withOpacity(0.8),
-                size: 14,
-              ),
-            ],
-          ],
+        child: Text(
+          event.title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w500,
+            fontSize: 14,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ),
     );
@@ -319,7 +266,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
 
   Widget _buildTimeColumn() {
     return Container(
-      width: _timeColumnWidth,
+      width: timeColumnWidth,
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
         border: Border(
@@ -327,16 +274,16 @@ class _DayViewWidgetState extends State<DayViewWidget> {
         ),
       ),
       child: Column(
-        children: List.generate(24, (hour) {
+        children: List.generate(24, (index) {
           return Container(
-            height: _hourHeight,
+            height: hourHeight,
             alignment: Alignment.topLeft,
             padding: const EdgeInsets.only(top: 4, left: 8),
             decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
             ),
             child: Text(
-              '${hour.toString().padLeft(2, '0')}:00',
+              '${index.toString().padLeft(2, '0')}:00',
               style: const TextStyle(
                 fontSize: 12,
                 color: Colors.grey,
@@ -350,8 +297,8 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   }
 
   Widget _buildEventColumn() {
-    return SizedBox(
-      height: 24 * _hourHeight,
+    return Container(
+      height: 24 * hourHeight,
       width: double.infinity,
       child: Stack(
         children: [
@@ -373,15 +320,12 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       widget.date.month,
       widget.date.day,
     );
-
     bool isToday = currentSelectedDate.isAtSameMomentAs(today);
-
     List<Widget> gridLines = [];
 
     for (int hour = 0; hour < 24; hour++) {
       bool isCurrentHour = isToday && hour == now.hour;
-      double top = hour * _hourHeight;
-
+      double top = hour * hourHeight;
       gridLines.add(
         Positioned(
           top: top,
@@ -396,7 +340,6 @@ class _DayViewWidgetState extends State<DayViewWidget> {
         ),
       );
     }
-
     return Stack(children: gridLines);
   }
 
@@ -408,14 +351,11 @@ class _DayViewWidgetState extends State<DayViewWidget> {
       widget.date.month,
       widget.date.day,
     );
-
     bool isToday = currentSelectedDate.isAtSameMomentAs(today);
-
     if (!isToday) return const SizedBox.shrink();
 
     double topPosition =
-        (now.hour * _hourHeight) + ((now.minute / 60) * _hourHeight);
-
+        (now.hour * hourHeight) + ((now.minute / 60) * hourHeight);
     return Positioned(
       top: topPosition,
       left: 0,
@@ -454,7 +394,7 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   }
 
   bool _isPositionOccupied(double yPosition) {
-    double hours = yPosition / _hourHeight;
+    double hours = yPosition / hourHeight;
     DateTime tapTime = DateTime(
       widget.date.year,
       widget.date.month,
@@ -472,6 +412,31 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     return false;
   }
 
+  void _createEventAtPosition(double yPosition) {
+    double hours = yPosition / hourHeight;
+    int targetHour = hours.floor();
+    int targetMinute = ((hours - targetHour) * 60).round();
+    targetMinute = (targetMinute ~/ minuteInterval) * minuteInterval;
+    if (targetMinute >= 60) {
+      targetHour += 1;
+      targetMinute = 0;
+    }
+    if (targetHour < 0) targetHour = 0;
+    if (targetHour >= 24) targetHour = 23;
+
+    DateTime baseDate = DateTime(
+      widget.date.year,
+      widget.date.month,
+      widget.date.day,
+    );
+    DateTime startTime = baseDate.copyWith(
+      hour: targetHour,
+      minute: targetMinute,
+    );
+
+    widget.onTimeSlotTap(startTime);
+  }
+
   Widget _buildOverlayDragTarget() {
     return Positioned.fill(
       child: Builder(
@@ -486,28 +451,51 @@ class _DayViewWidgetState extends State<DayViewWidget> {
                 }
                 _lastUpdateTime = now;
 
-                if (_isDragging) {
-                  double globalY = details.offset.dy;
-                  _startAutoScroll(globalY);
+                Offset globalPosition = details.offset;
+
+                // Auto Scroll Zone Detection
+                RenderBox? scrollAreaRenderBox =
+                    _scrollKey.currentContext?.findRenderObject() as RenderBox?;
+                if (scrollAreaRenderBox != null &&
+                    _scrollController.hasClients) {
+                  Offset scrollAreaGlobalOffset =
+                      scrollAreaRenderBox.localToGlobal(Offset.zero);
+                  double viewportTopY = scrollAreaGlobalOffset.dy;
+                  double viewportHeight = scrollAreaRenderBox.size.height;
+                  double viewportBottomY = viewportTopY + viewportHeight;
+                  const double scrollZoneHeight = 60.0;
+
+                  if (globalPosition.dy < viewportTopY + scrollZoneHeight) {
+                    _autoScrollVelocity = -_kAutoScrollPixelsPerTick;
+                  } else if (globalPosition.dy >
+                      viewportBottomY - scrollZoneHeight) {
+                    _autoScrollVelocity = _kAutoScrollPixelsPerTick;
+                  } else {
+                    _autoScrollVelocity = 0.0;
+                  }
+                  _manageAutoScrollTimer();
+                } else {
+                  _autoScrollVelocity = 0.0;
+                  _manageAutoScrollTimer();
                 }
 
-                RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-                if (renderBox != null) {
-                  Offset localOffset = renderBox.globalToLocal(details.offset);
+                RenderBox? dragTargetRenderBox =
+                    context.findRenderObject() as RenderBox?;
+                if (dragTargetRenderBox != null) {
+                  Offset localOffset = dragTargetRenderBox.globalToLocal(
+                    globalPosition,
+                  );
                   double localY = localOffset.dy;
-
-                  double hours = localY / _hourHeight;
+                  double hours = localY / hourHeight;
                   int targetHour = hours.floor();
                   int targetMinute = ((hours - targetHour) * 60).round();
-
                   targetMinute =
-                      (targetMinute ~/ _minuteInterval) * _minuteInterval;
-
+                      (targetMinute ~/ minuteInterval) * minuteInterval;
                   if (targetMinute >= 60) {
                     targetHour += 1;
                     targetMinute = 0;
                   }
-
+                  DateTime? newDragTargetTime;
                   if (targetHour >= 0 &&
                       targetHour < 24 &&
                       targetMinute >= 0 &&
@@ -517,11 +505,14 @@ class _DayViewWidgetState extends State<DayViewWidget> {
                       widget.date.month,
                       widget.date.day,
                     );
+                    newDragTargetTime = baseDate.copyWith(
+                      hour: targetHour,
+                      minute: targetMinute,
+                    );
+                  }
+                  if (_dragTargetTime != newDragTargetTime) {
                     setState(() {
-                      _dragTargetTime = baseDate.copyWith(
-                        hour: targetHour,
-                        minute: targetMinute,
-                      );
+                      _dragTargetTime = newDragTargetTime;
                     });
                   }
                 }
@@ -539,16 +530,16 @@ class _DayViewWidgetState extends State<DayViewWidget> {
               return data.data != null;
             },
             onAcceptWithDetails: (details) {
+              _autoScrollTimer?.cancel();
+              _autoScrollTimer = null;
+              _autoScrollVelocity = 0.0;
               try {
-                _stopAutoScroll();
-
                 if (_dragTargetTime != null && widget.onEventMove != null) {
                   widget.onEventMove!(details.data, _dragTargetTime!);
                 }
               } catch (e) {
                 print('Error in drop: $e');
               }
-
               setState(() {
                 _isDragging = false;
                 _dragTargetTime = null;
@@ -557,24 +548,23 @@ class _DayViewWidgetState extends State<DayViewWidget> {
               });
             },
             onLeave: (data) {
-              _stopAutoScroll();
-
+              _autoScrollTimer?.cancel();
+              _autoScrollTimer = null;
+              _autoScrollVelocity = 0.0;
               setState(() {
-                _isDragging = false;
                 _dragTargetTime = null;
-                _draggedEvent = null;
-                _lastUpdateTime = null;
               });
             },
             builder: (context, candidateData, rejectedData) {
               bool isHighlighted = candidateData.isNotEmpty;
-
+              Color? backgroundColor;
+              if (isHighlighted) {
+                backgroundColor = Colors.orange.withOpacity(0.08);
+              }
               return IgnorePointer(
                 ignoring: !isHighlighted,
                 child: Container(
-                  color: isHighlighted
-                      ? Colors.orange.withOpacity(0.08)
-                      : Colors.transparent,
+                  color: backgroundColor ?? Colors.transparent,
                   child: isHighlighted
                       ? Container(
                           margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -596,29 +586,8 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     );
   }
 
-  void _createEventAtPosition(double yPosition) {
-    double hours = yPosition / _hourHeight;
-    int targetHour = hours.floor();
-    int targetMinute = 0; // Set to 0 for full hour
-
-    if (targetHour < 0) targetHour = 0;
-    if (targetHour >= 24) targetHour = 23;
-
-    DateTime baseDate = DateTime(
-      widget.date.year,
-      widget.date.month,
-      widget.date.day,
-    );
-    DateTime startTime = baseDate.copyWith(
-      hour: targetHour,
-      minute: targetMinute,
-    );
-
-    widget.onTimeSlotTap(startTime);
-  }
-
   List<Widget> _buildLayoutedEvents() {
-    final layouts = _calculateEventLayouts();
+    List<EventLayout> layouts = _calculateEventLayouts();
     return layouts.map((layout) => _buildDraggableEvent(layout)).toList();
   }
 
@@ -630,89 +599,82 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     sortedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
 
     List<EventLayout> layouts = [];
-    List<List<CalendarEvent>> eventGroups = [];
+    List<CalendarEvent> processedEvents = [];
 
     for (CalendarEvent event in sortedEvents) {
-      bool addedToGroup = false;
+      if (processedEvents.contains(event)) continue;
 
-      for (List<CalendarEvent> group in eventGroups) {
-        bool hasOverlap = false;
-        for (CalendarEvent groupEvent in group) {
-          if (_eventsOverlap(event, groupEvent)) {
-            hasOverlap = true;
+      List<CalendarEvent> overlappingGroup = [event];
+
+      for (CalendarEvent otherEvent in sortedEvents) {
+        if (event == otherEvent || processedEvents.contains(otherEvent))
+          continue;
+        if (overlappingGroup.contains(otherEvent)) continue;
+
+        bool overlapsWithCurrentGroup = false;
+        for (CalendarEvent groupEvent in overlappingGroup) {
+          if (_eventsOverlap(groupEvent, otherEvent)) {
+            overlapsWithCurrentGroup = true;
             break;
           }
         }
-        if (hasOverlap) {
-          group.add(event);
-          addedToGroup = true;
-          break;
+        if (overlapsWithCurrentGroup) {
+          overlappingGroup.add(otherEvent);
         }
       }
 
-      if (!addedToGroup) {
-        eventGroups.add([event]);
+      for (var e in overlappingGroup) {
+        if (!processedEvents.contains(e)) processedEvents.add(e);
       }
-    }
 
-    for (List<CalendarEvent> group in eventGroups) {
-      if (group.length == 1) {
-        layouts.add(
-          EventLayout(
-            event: group[0],
-            left: 0.0,
-            width: 1.0,
-            column: 0,
-            totalColumns: 1,
-          ),
-        );
-      } else {
-        List<List<CalendarEvent>> columns = [];
+      overlappingGroup.sort((a, b) {
+        int comp = a.startTime.compareTo(b.startTime);
+        if (comp == 0) {
+          return a.endTime.compareTo(b.endTime);
+        }
+        return comp;
+      });
 
-        for (CalendarEvent event in group) {
-          int targetColumn = -1;
+      List<List<CalendarEvent>> columns = [];
 
-          for (int i = 0; i < columns.length; i++) {
-            bool canPlace = true;
-            for (CalendarEvent existingEvent in columns[i]) {
-              if (_eventsOverlap(event, existingEvent)) {
-                canPlace = false;
-                break;
-              }
-            }
-            if (canPlace) {
-              targetColumn = i;
+      for (CalendarEvent currentEventInGroup in overlappingGroup) {
+        int targetCol = -1;
+        for (int i = 0; i < columns.length; i++) {
+          bool canPlace = true;
+          for (CalendarEvent placedEvent in columns[i]) {
+            if (_eventsOverlap(currentEventInGroup, placedEvent)) {
+              canPlace = false;
               break;
             }
           }
-
-          if (targetColumn == -1) {
-            columns.add([]);
-            targetColumn = columns.length - 1;
+          if (canPlace) {
+            targetCol = i;
+            break;
           }
-
-          columns[targetColumn].add(event);
         }
 
-        int totalColumns = columns.length;
-        double columnWidth = 1.0 / totalColumns;
+        if (targetCol == -1) {
+          columns.add([]);
+          targetCol = columns.length - 1;
+        }
+        columns[targetCol].add(currentEventInGroup);
+      }
 
-        for (int columnIndex = 0; columnIndex < columns.length; columnIndex++) {
-          for (CalendarEvent event in columns[columnIndex]) {
-            layouts.add(
-              EventLayout(
-                event: event,
-                left: columnIndex * columnWidth,
-                width: columnWidth,
-                column: columnIndex,
-                totalColumns: totalColumns,
-              ),
-            );
-          }
+      int totalColumnsInGroup = columns.isNotEmpty ? columns.length : 1;
+      for (int colIdx = 0; colIdx < columns.length; colIdx++) {
+        for (CalendarEvent ev in columns[colIdx]) {
+          layouts.add(
+            EventLayout(
+              event: ev,
+              left: colIdx.toDouble() / totalColumnsInGroup.toDouble(),
+              width: 1.0 / totalColumnsInGroup.toDouble(),
+              column: colIdx,
+              totalColumns: totalColumnsInGroup,
+            ),
+          );
         }
       }
     }
-
     return layouts;
   }
 
@@ -725,165 +687,162 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     CalendarEvent event = layout.event;
     double top = _getEventTopPosition(event);
     double height = _getEventHeight(event);
-    double leftPadding = 8;
-    double rightPadding = 8;
+    double leftPadding = 4;
+    double rightPadding = 4;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        double screenWidth = MediaQuery.of(context).size.width;
-        double availableWidth =
-            screenWidth - _timeColumnWidth - leftPadding - rightPadding;
+    double screenWidth = MediaQuery.of(context).size.width;
+    double availableWidthForEvents =
+        screenWidth - timeColumnWidth - leftPadding - rightPadding;
 
-        double eventWidth = (availableWidth * layout.width).clamp(
-          80.0,
-          availableWidth,
-        );
-        double eventLeft = leftPadding + (availableWidth * layout.left);
+    double eventWidth = (availableWidthForEvents * layout.width).clamp(
+          50.0,
+          availableWidthForEvents,
+        ) -
+        (layout.totalColumns > 1 ? 2 : 0);
+    double eventLeft = leftPadding + (availableWidthForEvents * layout.left);
 
-        if (eventLeft + eventWidth > screenWidth - rightPadding) {
-          eventLeft = screenWidth - rightPadding - eventWidth;
-        }
-
-        return Positioned(
-          top: top,
-          left: eventLeft,
-          width: eventWidth,
-          height: height,
-          child: LongPressDraggable<CalendarEvent>(
-            data: event,
-            onDragStarted: () {
-              setState(() {
-                _isDragging = true;
-                _draggedEvent = event;
-                _lastUpdateTime = null;
-              });
-            },
-            onDragEnd: (details) {
-              _stopAutoScroll();
-
-              setState(() {
-                _isDragging = false;
-                _dragTargetTime = null;
-                _draggedEvent = null;
-                _lastUpdateTime = null;
-              });
-            },
-            feedback: Material(
-              elevation: 6,
+    return Positioned(
+      top: top,
+      left: eventLeft,
+      width: eventWidth,
+      height: height,
+      child: LongPressDraggable<CalendarEvent>(
+        data: event,
+        onDragStarted: () {
+          setState(() {
+            _isDragging = true;
+            _draggedEvent = event;
+            _lastUpdateTime = null;
+            _autoScrollTimer?.cancel();
+            _autoScrollTimer = null;
+            _autoScrollVelocity = 0.0;
+          });
+        },
+        onDragEnd: (details) {
+          _autoScrollTimer?.cancel();
+          _autoScrollTimer = null;
+          _autoScrollVelocity = 0.0;
+          setState(() {
+            _isDragging = false;
+            _dragTargetTime = null;
+            _draggedEvent = null;
+            _lastUpdateTime = null;
+          });
+        },
+        feedback: Material(
+          elevation: 6,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: eventWidth,
+            height: height,
+            decoration: BoxDecoration(
+              color: event.color.withOpacity(0.9),
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: eventWidth,
-                height: height,
-                decoration: BoxDecoration(
-                  color: event.color.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-                padding: const EdgeInsets.all(6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        event.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                    ),
-                    if (height > 30)
-                      Flexible(
-                        child: Text(
-                          '${AppDateUtils.formatTime(event.startTime)} - ${AppDateUtils.formatTime(event.endTime)}',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 10,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+              border: Border.all(color: Colors.white, width: 2),
             ),
-            childWhenDragging: Container(
-              decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade400, width: 2),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.drag_handle,
-                  color: Colors.grey.shade600,
-                  size: 24,
-                ),
-              ),
-            ),
-            child: GestureDetector(
-              onTap: () => widget.onEventTap(event),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: event.color,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    event.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
                     ),
-                  ],
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                 ),
-                padding: const EdgeInsets.all(6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        event.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                if (height > 30)
+                  Flexible(
+                    child: Text(
+                      '${AppDateUtils.formatTime(event.startTime)} - ${AppDateUtils.formatTime(event.endTime)}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    if (height > 30)
-                      Flexible(
-                        child: Text(
-                          '${AppDateUtils.formatTime(event.startTime)} - ${AppDateUtils.formatTime(event.endTime)}',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 9,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+                  ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+        childWhenDragging: Container(
+          decoration: BoxDecoration(
+            color: Colors.grey.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade400, width: 2),
+          ),
+          child: Center(
+            child: Icon(
+              Icons.drag_handle,
+              color: Colors.grey.shade600,
+              size: 24,
+            ),
+          ),
+        ),
+        child: GestureDetector(
+          onTap: () => widget.onEventTap(event),
+          child: Container(
+            decoration: BoxDecoration(
+              color: event.color,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    event.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (height > 30)
+                  Flexible(
+                    child: Text(
+                      '${AppDateUtils.formatTime(event.startTime)} - ${AppDateUtils.formatTime(event.endTime)}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 9,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildDragTimeIndicator() {
-    if (_dragTargetTime == null) {
+    if (_dragTargetTime == null || !_isDragging) {
       return const SizedBox.shrink();
     }
 
-    double startTimeY = (_dragTargetTime!.hour * _hourHeight) +
-        (_dragTargetTime!.minute * _hourHeight / 60);
+    double startTimeY = (_dragTargetTime!.hour * hourHeight) +
+        (_dragTargetTime!.minute * hourHeight / 60);
 
     if (_scrollController.hasClients) {
       startTimeY -= _scrollController.offset;
@@ -900,54 +859,49 @@ class _DayViewWidgetState extends State<DayViewWidget> {
     }
 
     return Positioned(
-      left: _timeColumnWidth + 10,
+      left: timeColumnWidth + 10,
       top: startTimeY - 25,
       child: IgnorePointer(
         child: Material(
           color: Colors.transparent,
           elevation: 8,
           borderRadius: BorderRadius.circular(8),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return Container(
-                constraints: BoxConstraints(
-                  maxWidth:
-                      MediaQuery.of(context).size.width - _timeColumnWidth - 40,
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth:
+                  MediaQuery.of(context).size.width - timeColumnWidth - 40,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
                 ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black87,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white, width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.5),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.schedule, color: Colors.white, size: 14),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    timeText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.schedule, color: Colors.white, size: 14),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        timeText,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+              ],
+            ),
           ),
         ),
       ),
@@ -957,15 +911,16 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   double _getEventTopPosition(CalendarEvent event) {
     int hour = event.startTime.hour;
     int minute = event.startTime.minute;
-    return (hour * _hourHeight) + (minute * _hourHeight / 60);
+    return (hour * hourHeight) + (minute * hourHeight / 60);
   }
 
   double _getEventHeight(CalendarEvent event) {
     Duration duration = event.endTime.difference(event.startTime);
-    return (duration.inMinutes * _hourHeight / 60).clamp(20.0, double.infinity);
+    return (duration.inMinutes * hourHeight / 60).clamp(20.0, double.infinity);
   }
 }
 
+// Event Layout class
 class EventLayout {
   final CalendarEvent event;
   final double left;

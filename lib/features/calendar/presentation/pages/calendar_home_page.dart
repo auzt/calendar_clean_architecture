@@ -20,7 +20,6 @@ class CalendarHomePage extends StatefulWidget {
 
 class _CalendarHomePageState extends State<CalendarHomePage>
     with WidgetsBindingObserver {
-  // ✅ ADDED: Observer untuk lifecycle
   late DateTime _currentMonth;
   late PageController _pageController;
 
@@ -30,10 +29,12 @@ class _CalendarHomePageState extends State<CalendarHomePage>
     _currentMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
     _pageController = PageController(initialPage: 1000);
 
-    // ✅ ADDED: Observer untuk lifecycle changes
+    // Add observer untuk lifecycle changes
     WidgetsBinding.instance.addObserver(this);
 
-    // Load initial events
+    // Load initial events with debug info
+    print(
+        '🏠 CalendarHomePage: Loading initial events for ${_currentMonth.year}-${_currentMonth.month}');
     _loadEventsForMonth(_currentMonth);
 
     // Check Google auth status
@@ -42,18 +43,16 @@ class _CalendarHomePageState extends State<CalendarHomePage>
 
   @override
   void dispose() {
-    // ✅ ADDED: Remove observer
     WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
   }
 
-  // ✅ ADDED: Override didChangeAppLifecycleState untuk auto refresh
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    // ✅ KUNCI: Refresh events ketika app kembali ke foreground
+    // Refresh events ketika app kembali ke foreground
     if (state == AppLifecycleState.resumed) {
       print('📱 App resumed - refreshing month view events');
       _loadEventsForMonth(_currentMonth);
@@ -66,23 +65,26 @@ class _CalendarHomePageState extends State<CalendarHomePage>
     final dateRange = CalendarDateRange(startDate: startDate, endDate: endDate);
 
     print('🔄 Loading events for month: ${month.year}-${month.month}');
+    print(
+        '📅 Date range: ${AppDateUtils.formatDisplayDate(startDate)} to ${AppDateUtils.formatDisplayDate(endDate)}');
+
     context.read<CalendarBloc>().add(
           calendar_events.LoadCalendarEvents(
             dateRange: dateRange,
-            forceRefresh:
-                false, // ✅ CHANGED: false untuk performance, tapi bisa di-override
+            forceRefresh: false,
           ),
         );
   }
 
   void _onMonthChanged(DateTime newMonth) {
+    print(
+        '📅 Month changed from ${_currentMonth.year}-${_currentMonth.month} to ${newMonth.year}-${newMonth.month}');
     setState(() {
       _currentMonth = newMonth;
     });
     _loadEventsForMonth(newMonth);
   }
 
-  // ✅ ADDED: Method untuk force refresh (manual)
   void _forceRefreshCurrentMonth() {
     final startDate = AppDateUtils.getStartOfMonth(_currentMonth);
     final endDate = AppDateUtils.getEndOfMonth(_currentMonth);
@@ -92,7 +94,7 @@ class _CalendarHomePageState extends State<CalendarHomePage>
     context.read<CalendarBloc>().add(
           calendar_events.LoadCalendarEvents(
             dateRange: dateRange,
-            forceRefresh: true, // ✅ Force refresh
+            forceRefresh: true,
           ),
         );
   }
@@ -149,7 +151,7 @@ class _CalendarHomePageState extends State<CalendarHomePage>
             onSelected: (value) {
               switch (value) {
                 case 'refresh':
-                  _forceRefreshCurrentMonth(); // ✅ CHANGED: Use force refresh method
+                  _forceRefreshCurrentMonth();
                   break;
                 case 'clear_cache':
                   _clearCache();
@@ -191,20 +193,25 @@ class _CalendarHomePageState extends State<CalendarHomePage>
       body: BlocListener<CalendarBloc, CalendarState>(
         listener: (context, state) {
           if (state is CalendarError) {
+            print('❌ Calendar error: ${state.message}');
             _showErrorSnackBar(state.message);
           } else if (state is GoogleAuthSuccess) {
+            print('✅ Google auth success');
             _showSuccessSnackBar('Berhasil login ke Google Calendar');
-            _forceRefreshCurrentMonth(); // ✅ ADDED: Refresh setelah auth
+            _forceRefreshCurrentMonth();
           } else if (state is GoogleAuthFailed) {
+            print('❌ Google auth failed: ${state.message}');
             _showErrorSnackBar('Login gagal: ${state.message}');
           } else if (state is GoogleSignedOut) {
+            print('👋 Google signed out');
             _showSuccessSnackBar('Berhasil logout dari Google Calendar');
           } else if (state is EventCreated ||
               state is EventUpdated ||
               state is EventDeleted) {
-            // ✅ ADDED: Auto refresh setelah event changes
             print('📝 Event changed - refreshing month view');
             _forceRefreshCurrentMonth();
+          } else if (state is CalendarLoaded) {
+            print('📋 Calendar loaded with ${state.events.length} events');
           }
         },
         child: Column(
@@ -313,25 +320,27 @@ class _CalendarHomePageState extends State<CalendarHomePage>
   }
 
   void _navigateToDayView(DateTime date) async {
-    // ✅ IMPROVED: Tunggu hasil dari day view dan refresh jika ada perubahan
+    print(
+        '🗓️ Navigating to day view for ${AppDateUtils.formatDisplayDate(date)}');
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => DayViewPage(initialDate: date)),
     );
 
-    // ✅ KUNCI: Refresh month view setelah kembali dari day view
     print('🔙 Returned from day view - refreshing month view');
     _forceRefreshCurrentMonth();
   }
 
   void _navigateToAddEvent(DateTime date) async {
-    // ✅ IMPROVED: Tunggu hasil dari add event dan refresh jika ada perubahan
+    print(
+        '➕ Navigating to add event for ${AppDateUtils.formatDisplayDate(date)}');
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => AddEventPage(initialDate: date)),
     );
 
-    // ✅ KUNCI: Refresh month view setelah kembali dari add event
     print('🔙 Returned from add event - refreshing month view');
     _forceRefreshCurrentMonth();
   }
@@ -425,10 +434,6 @@ class _CalendarHomePageState extends State<CalendarHomePage>
     );
   }
 
-  void _refreshEvents() {
-    _forceRefreshCurrentMonth(); // ✅ CHANGED: Use dedicated method
-  }
-
   void _clearCache() {
     showDialog(
       context: context,
@@ -493,7 +498,7 @@ class _CalendarHomePageState extends State<CalendarHomePage>
         action: SnackBarAction(
           label: 'RETRY',
           textColor: Colors.white,
-          onPressed: () => _forceRefreshCurrentMonth(), // ✅ CHANGED
+          onPressed: () => _forceRefreshCurrentMonth(),
         ),
       ),
     );
