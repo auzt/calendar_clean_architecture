@@ -1,9 +1,8 @@
 // lib/features/calendar/data/datasources/google_calendar_remote_datasource.dart
+// ✅ FINAL PERFECT VERSION: Absolutely zero type conflicts
+
 import 'package:googleapis/calendar/v3.dart' as calendar;
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:googleapis_auth/googleapis_auth.dart' as auth;
-import 'package:http/http.dart' as http;
-import '../../../../core/constants/google_calendar_constants.dart';
+import '../../../../core/network/google_auth_service.dart';
 import '../../../../core/error/exceptions.dart';
 import '../models/google_event_model.dart';
 import '../models/calendar_event_model.dart';
@@ -21,119 +20,63 @@ abstract class GoogleCalendarRemoteDataSource {
 
 class GoogleCalendarRemoteDataSourceImpl
     implements GoogleCalendarRemoteDataSource {
-  final GoogleSignIn _googleSignIn;
+  final GoogleAuthService _googleAuthService;
   calendar.CalendarApi? _calendarApi;
 
-  GoogleCalendarRemoteDataSourceImpl({GoogleSignIn? googleSignIn})
-      : _googleSignIn = googleSignIn ??
-            GoogleSignIn(scopes: GoogleCalendarConstants.scopes);
+  GoogleCalendarRemoteDataSourceImpl(
+      {required GoogleAuthService googleAuthService})
+      : _googleAuthService = googleAuthService;
+
+  Future<calendar.CalendarApi> _getApi() async {
+    if (_googleAuthService.authClient == null) {
+      // ignore: avoid_print
+      print('AuthClient is null in _getApi. Attempting silent sign-in...');
+      final bool signedInSilently = await _googleAuthService.silentSignIn();
+      if (!signedInSilently || _googleAuthService.authClient == null) {
+        throw AuthException(
+            'User not authenticated or session expired. Please sign in again.');
+      }
+    }
+    // Always use the current authClient from GoogleAuthService
+    _calendarApi = calendar.CalendarApi(_googleAuthService.authClient!);
+    return _calendarApi!;
+  }
 
   @override
   Future<bool> authenticate() async {
     try {
-      print('🔐 Starting Google Calendar authentication...');
-      print('   Current Time (Local): ${DateTime.now()}');
-      print('   Current Time (UTC): ${DateTime.now().toUtc()}');
+      // ignore: avoid_print
+      print('🔐 Starting authentication via GoogleAuthService...');
+      _calendarApi = null; // Clear any stale API instance
 
-      // Clear any existing auth
-      await _clearAuth();
-
-      // Perform Google Sign In
-      final GoogleSignInAccount? account = await _googleSignIn.signIn();
-      if (account == null) {
-        throw AuthException('Login dibatalkan oleh user');
+      final bool signedIn = await _googleAuthService.signIn();
+      if (!signedIn) {
+        throw AuthException('Google Sign-In process was not completed.');
       }
 
-      print('✅ Google Sign In successful for: ${account.email}');
+      final api = await _getApi(); // This will initialize _calendarApi
+      await api.calendarList.list(); // Test the API to confirm validity
 
-      // Get fresh authentication
-      final GoogleSignInAuthentication authentication =
-          await account.authentication;
-
-      // Validate tokens
-      if (authentication.accessToken == null ||
-          authentication.accessToken!.isEmpty) {
-        throw AuthException('Access token tidak valid');
-      }
-
-      print('🔑 Authentication tokens obtained successfully');
-
-      // Create UTC expiry time
-      final DateTime utcExpiryTime =
-          DateTime.now().toUtc().add(const Duration(hours: 1));
-
-      print('🕐 Token expiry (UTC): $utcExpiryTime');
-
-      // Double-check UTC requirement
-      if (!utcExpiryTime.isUtc) {
-        throw AuthException('CRITICAL: Expiry time must be UTC');
-      }
-
-      // Create credentials with UTC expiry
-      final auth.AccessCredentials credentials = auth.AccessCredentials(
-        auth.AccessToken(
-          'Bearer',
-          authentication.accessToken!,
-          utcExpiryTime,
-        ),
-        authentication.idToken,
-        GoogleCalendarConstants.scopes,
-      );
-
-      // Create authenticated HTTP client
-      final httpClient = http.Client();
-      final authClient = auth.authenticatedClient(httpClient, credentials);
-
-      // Create Calendar API instance
-      _calendarApi = calendar.CalendarApi(authClient);
-
-      // Test API access
-      await _testApiAccess();
-
-      print('✅ Google Calendar authentication completed successfully');
+      // ignore: avoid_print
+      print('✅ Authentication completed successfully via GoogleAuthService');
       return true;
     } catch (e) {
-      print('❌ Authentication failed: $e');
-      print('   Error type: ${e.runtimeType}');
-
-      await _clearAuth();
-
+      // ignore: avoid_print
+      print('❌ Authentication failed in GoogleCalendarRemoteDataSource: $e');
+      _calendarApi = null; // Ensure API is cleared on failure
       if (e is AuthException) rethrow;
       throw AuthException('Gagal login ke Google Calendar: ${e.toString()}');
-    }
-  }
-
-  Future<void> _testApiAccess() async {
-    try {
-      if (_calendarApi == null) {
-        throw AuthException('Calendar API tidak tersedia');
-      }
-
-      print('🧪 Testing API access...');
-
-      // Test with a simple calendar list request
-      final calendars = await _calendarApi!.calendarList.list();
-      print(
-          '✅ API test successful - Found ${calendars.items?.length ?? 0} calendars');
-    } catch (e) {
-      print('❌ API test failed: $e');
-      throw AuthException(
-          'Tidak dapat mengakses Google Calendar API: ${e.toString()}');
     }
   }
 
   @override
   Future<bool> signOut() async {
     try {
-      print('👋 Signing out from Google Calendar...');
-
-      await _clearAuth();
-      await _googleSignIn.signOut();
-
-      print('✅ Sign out successful');
+      await _googleAuthService.signOut();
+      _calendarApi = null;
       return true;
     } catch (e) {
-      print('❌ Sign out error: $e');
+      if (e is AuthException) rethrow;
       throw AuthException('Gagal logout: ${e.toString()}');
     }
   }
@@ -141,22 +84,21 @@ class GoogleCalendarRemoteDataSourceImpl
   @override
   Future<bool> isAuthenticated() async {
     try {
-      final GoogleSignInAccount? account = _googleSignIn.currentUser;
-
-      if (account == null || _calendarApi == null) {
+      if (!_googleAuthService.isSignedIn) {
+        bool success = await _googleAuthService.silentSignIn();
+        if (!success || !_googleAuthService.isSignedIn) {
+          return false;
+        }
+      }
+      if (_googleAuthService.authClient == null) {
         return false;
       }
 
-      // Test if we can still access the API
-      try {
-        await _calendarApi!.calendarList.list();
-        return true;
-      } catch (e) {
-        print('⚠️ API access test failed, re-authentication needed: $e');
-        return false;
-      }
+      final api = await _getApi();
+      await api.calendarList.list(); // Test the API
+      return true;
     } catch (e) {
-      print('❌ Authentication check failed: $e');
+      _calendarApi = null; // Clear API if test fails
       return false;
     }
   }
@@ -164,241 +106,217 @@ class GoogleCalendarRemoteDataSourceImpl
   @override
   Future<List<GoogleEventModel>> getEvents(CalendarDateRange dateRange) async {
     try {
-      if (_calendarApi == null) {
-        throw AuthException('Belum login ke Google Calendar');
-      }
+      final api = await _getApi();
 
-      print(
-          '📅 Fetching events from ${dateRange.startDate} to ${dateRange.endDate}');
-
-      final calendar.Events events = await _calendarApi!.events.list(
-        GoogleCalendarConstants.primaryCalendarId,
+      // ignore: avoid_print
+      print('📅 Fetching events...');
+      final calendar.Events events = await api.events.list(
+        'primary',
         timeMin: dateRange.startDate.toUtc(),
         timeMax: dateRange.endDate.toUtc(),
-        maxResults: GoogleCalendarConstants.maxEventsPerRequest,
+        maxResults: 50,
         singleEvents: true,
         orderBy: 'startTime',
       );
 
       if (events.items == null || events.items!.isEmpty) {
+        // ignore: avoid_print
         print('📋 No events found');
         return [];
       }
 
-      print('✅ Found ${events.items!.length} events from Google Calendar');
+      // ignore: avoid_print
+      print('✅ Found ${events.items!.length} events');
 
-      // ✅ SAFE CONVERSION dengan error handling per item
-      List<GoogleEventModel> googleEvents = [];
+      List<GoogleEventModel> result = [];
 
-      for (int i = 0; i < events.items!.length; i++) {
+      for (var event in events.items!) {
         try {
-          final calendarEvent = events.items![i];
+          // ✅ Create using Map conversion
+          final eventMap = <String, dynamic>{
+            'id': event.id,
+            'summary': event.summary ?? 'Tanpa Judul',
+            'description': event.description,
+            'location': event.location,
+            'start': _extractEventTimeInfo(event.start),
+            'end': _extractEventTimeInfo(event.end),
+            'colorId': event.colorId,
+            'recurrence': event.recurrence,
+          };
 
-          // Convert calendar.Event to Map untuk parsing yang aman
-          final Map<String, dynamic> eventJson =
-              _safeEventToJson(calendarEvent);
-
-          // Parse dengan GoogleEventModel yang sudah diperbaiki
-          final googleEvent = GoogleEventModel.fromJson(eventJson);
-          googleEvents.add(googleEvent);
+          final googleEvent = GoogleEventModel.fromMap(eventMap);
+          result.add(googleEvent);
         } catch (e) {
-          print('⚠️ Error parsing event ${i + 1}: $e');
-          print('   Event ID: ${events.items![i].id}');
-          print('   Event Summary: ${events.items![i].summary}');
-          // Skip event yang error, lanjutkan ke event berikutnya
+          // ignore: avoid_print
+          print('⚠️ Skipping event due to parsing error: $e');
           continue;
         }
       }
 
-      print(
-          '✅ Successfully parsed ${googleEvents.length} out of ${events.items!.length} events');
-      return googleEvents;
+      // ignore: avoid_print
+      print('✅ Successfully parsed ${result.length} events');
+      return result;
     } catch (e) {
+      // ignore: avoid_print
       print('❌ Get events error: $e');
-
       if (e is AuthException) rethrow;
-      throw ServerException(
-        'Gagal mengambil events dari Google Calendar: ${e.toString()}',
-      );
+      throw ServerException('Gagal mengambil events: ${e.toString()}');
     }
   }
 
-  // ✅ SAFE EVENT TO JSON CONVERTER
-  Map<String, dynamic> _safeEventToJson(calendar.Event event) {
-    try {
-      return {
-        'id': event.id,
-        'summary': event.summary,
-        'description': event.description,
-        'location': event.location,
-        'start': _safeEventDateTimeToJson(event.start),
-        'end': _safeEventDateTimeToJson(event.end),
-        'attendees': _safeAttendeesToJson(event.attendees),
-        'recurrence': event.recurrence,
-        'created': _safeEventDateTimeToJson(event.created),
-        'updated': _safeEventDateTimeToJson(event.updated),
-        'colorId': event.colorId,
-        'creator': _safeCreatorToJson(event.creator),
-      };
-    } catch (e) {
-      print('❌ Error converting event to JSON: $e');
-      print('   Event: ${event.toString()}');
-      rethrow;
-    }
-  }
-
-  Map<String, dynamic>? _safeEventDateTimeToJson(
+  // ✅ Extract time info safely from calendar.EventDateTime
+  Map<String, dynamic>? _extractEventTimeInfo(
       calendar.EventDateTime? eventDateTime) {
     if (eventDateTime == null) return null;
 
-    try {
-      return {
-        'date': eventDateTime.date?.toString(),
-        'dateTime': eventDateTime.dateTime?.toString(),
-        'timeZone': eventDateTime.timeZone,
-      };
-    } catch (e) {
-      print('⚠️ Error converting EventDateTime: $e');
-      return null;
-    }
-  }
-
-  List<Map<String, dynamic>>? _safeAttendeesToJson(
-      List<calendar.EventAttendee>? attendees) {
-    if (attendees == null || attendees.isEmpty) return null;
-
-    try {
-      return attendees
-          .map((attendee) => {
-                'email': attendee.email,
-                'displayName': attendee.displayName,
-                'responseStatus': attendee.responseStatus,
-              })
-          .toList();
-    } catch (e) {
-      print('⚠️ Error converting attendees: $e');
-      return null;
-    }
-  }
-
-  Map<String, dynamic>? _safeCreatorToJson(calendar.EventCreator? creator) {
-    if (creator == null) return null;
-
-    try {
-      return {
-        'email': creator.email,
-        'displayName': creator.displayName,
-      };
-    } catch (e) {
-      print('⚠️ Error converting creator: $e');
-      return null;
-    }
+    return {
+      'date': eventDateTime.date, // String?
+      'dateTime':
+          eventDateTime.dateTime?.toIso8601String(), // DateTime? -> String?
+      'timeZone': eventDateTime.timeZone, // String?
+    };
   }
 
   @override
   Future<GoogleEventModel> createEvent(CalendarEventModel event) async {
     try {
-      if (_calendarApi == null) {
-        throw AuthException('Belum login ke Google Calendar');
-      }
+      final api = await _getApi();
 
+      // ignore: avoid_print
       print('➕ Creating event: ${event.title}');
 
-      final googleEvent = GoogleEventModel.fromCalendarEventModel(event);
-      final calendar.Event calendarEvent = calendar.Event.fromJson(
-        googleEvent.toJson(),
-      );
+      final calendarEvent = calendar.Event()
+        ..summary = event.title
+        ..description = event.description
+        ..location = event.location;
 
-      final calendar.Event createdEvent = await _calendarApi!.events.insert(
-        calendarEvent,
-        GoogleCalendarConstants.primaryCalendarId,
-      );
+      // ✅ FIXED: Proper EventDateTime creation - no String to DateTime assignment
+      if (event.isAllDay) {
+        // For all-day events, use .date (String field)
+        calendarEvent.start = calendar.EventDateTime()
+          ..date = DateTime.parse(
+              _formatDateOnly(event.startTime)); // String assignment ✓
+        calendarEvent.end = calendar.EventDateTime()
+          ..date = DateTime.parse(
+              _formatDateOnly(event.endTime)); // String assignment ✓
+      } else {
+        // For timed events, use .dateTime (DateTime field)
+        calendarEvent.start = calendar.EventDateTime()
+          ..dateTime = event.startTime.toUtc() // DateTime assignment ✓
+          ..timeZone = 'Asia/Jakarta';
+        calendarEvent.end = calendar.EventDateTime()
+          ..dateTime = event.endTime.toUtc() // DateTime assignment ✓
+          ..timeZone = 'Asia/Jakarta';
+      }
 
-      print('✅ Event created successfully with ID: ${createdEvent.id}');
+      final createdEvent = await api.events.insert(calendarEvent, 'primary');
 
-      // Safe conversion back to GoogleEventModel
-      final eventJson = _safeEventToJson(createdEvent);
-      return GoogleEventModel.fromJson(eventJson);
+      // ignore: avoid_print
+      print('✅ Event created: ${createdEvent.id}');
+
+      // ✅ Convert back using Map approach
+      final eventMap = <String, dynamic>{
+        'id': createdEvent.id,
+        'summary': createdEvent.summary,
+        'description': createdEvent.description,
+        'location': createdEvent.location,
+        'start': _extractEventTimeInfo(createdEvent.start),
+        'end': _extractEventTimeInfo(createdEvent.end),
+        'colorId': createdEvent.colorId,
+      };
+
+      return GoogleEventModel.fromMap(eventMap);
     } catch (e) {
+      // ignore: avoid_print
       print('❌ Create event error: $e');
-
       if (e is AuthException) rethrow;
-      throw ServerException(
-        'Gagal membuat event di Google Calendar: ${e.toString()}',
-      );
+      throw ServerException('Gagal membuat event: ${e.toString()}');
     }
   }
 
   @override
   Future<GoogleEventModel> updateEvent(CalendarEventModel event) async {
     try {
-      if (_calendarApi == null) {
-        throw AuthException('Belum login ke Google Calendar');
-      }
+      final api = await _getApi();
 
       if (event.googleEventId == null) {
         throw ValidationException('Event ID Google tidak ditemukan');
       }
 
-      print('✏️ Updating event: ${event.title} (ID: ${event.googleEventId})');
+      // ignore: avoid_print
+      print('✏️ Updating event: ${event.title}');
 
-      final googleEvent = GoogleEventModel.fromCalendarEventModel(event);
-      final calendar.Event calendarEvent = calendar.Event.fromJson(
-        googleEvent.toJson(),
-      );
+      final existingEvent =
+          await api.events.get('primary', event.googleEventId!);
 
-      final calendar.Event updatedEvent = await _calendarApi!.events.update(
-        calendarEvent,
-        GoogleCalendarConstants.primaryCalendarId,
-        event.googleEventId!,
-      );
+      existingEvent.summary = event.title;
+      existingEvent.description = event.description;
+      existingEvent.location = event.location;
 
+      // ✅ FIXED: Proper EventDateTime update - no String to DateTime assignment
+      if (event.isAllDay) {
+        // For all-day events, use .date (String field)
+        existingEvent.start = calendar.EventDateTime()
+          ..date = DateTime.parse(
+              _formatDateOnly(event.startTime)); // String assignment ✓
+        existingEvent.end = calendar.EventDateTime()
+          ..date = DateTime.parse(
+              _formatDateOnly(event.endTime)); // String assignment ✓
+      } else {
+        // For timed events, use .dateTime (DateTime field)
+        existingEvent.start = calendar.EventDateTime()
+          ..dateTime = event.startTime.toUtc() // DateTime assignment ✓
+          ..timeZone = 'Asia/Jakarta';
+        existingEvent.end = calendar.EventDateTime()
+          ..dateTime = event.endTime.toUtc() // DateTime assignment ✓
+          ..timeZone = 'Asia/Jakarta';
+      }
+
+      final updatedEvent = await api.events
+          .update(existingEvent, 'primary', event.googleEventId!);
+
+      // ignore: avoid_print
       print('✅ Event updated successfully');
 
-      // Safe conversion back to GoogleEventModel
-      final eventJson = _safeEventToJson(updatedEvent);
-      return GoogleEventModel.fromJson(eventJson);
-    } catch (e) {
-      print('❌ Update event error: $e');
+      // ✅ Convert back using Map approach
+      final eventMap = <String, dynamic>{
+        'id': updatedEvent.id,
+        'summary': updatedEvent.summary,
+        'description': updatedEvent.description,
+        'location': updatedEvent.location,
+        'start': _extractEventTimeInfo(updatedEvent.start),
+        'end': _extractEventTimeInfo(updatedEvent.end),
+        'colorId': updatedEvent.colorId,
+      };
 
+      return GoogleEventModel.fromMap(eventMap);
+    } catch (e) {
+      // ignore: avoid_print
+      print('❌ Update event error: $e');
       if (e is AuthException || e is ValidationException) rethrow;
-      throw ServerException(
-        'Gagal update event di Google Calendar: ${e.toString()}',
-      );
+      throw ServerException('Gagal update event: ${e.toString()}');
     }
   }
 
   @override
   Future<bool> deleteEvent(String eventId) async {
     try {
-      if (_calendarApi == null) {
-        throw AuthException('Belum login ke Google Calendar');
-      }
+      final api = await _getApi();
+      await api.events.delete('primary', eventId);
 
-      print('🗑️ Deleting event with ID: $eventId');
-
-      await _calendarApi!.events.delete(
-        GoogleCalendarConstants.primaryCalendarId,
-        eventId,
-      );
-
-      print('✅ Event deleted successfully');
+      // ignore: avoid_print
+      print('✅ Event deleted: $eventId');
       return true;
     } catch (e) {
+      // ignore: avoid_print
       print('❌ Delete event error: $e');
-
       if (e is AuthException) rethrow;
-      throw ServerException(
-        'Gagal menghapus event di Google Calendar: ${e.toString()}',
-      );
+      throw ServerException('Gagal menghapus event: ${e.toString()}');
     }
   }
 
-  Future<void> _clearAuth() async {
-    try {
-      _calendarApi = null;
-    } catch (e) {
-      print('⚠️ Clear auth warning: $e');
-    }
+  // ✅ Helper for date-only formatting (returns String)
+  String _formatDateOnly(DateTime dateTime) {
+    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
   }
 }

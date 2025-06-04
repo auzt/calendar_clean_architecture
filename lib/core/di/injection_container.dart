@@ -63,7 +63,7 @@ Future<void> init() async {
 
   // Data sources
   sl.registerLazySingleton<GoogleCalendarRemoteDataSource>(
-    () => GoogleCalendarRemoteDataSourceImpl(googleSignIn: sl()),
+    () => GoogleCalendarRemoteDataSourceImpl( googleAuthService: sl()),
   );
 
   sl.registerLazySingleton<LocalCalendarDataSource>(

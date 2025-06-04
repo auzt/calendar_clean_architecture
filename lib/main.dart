@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+// import 'package:google_sign_in/google_sign_in.dart'; // No longer directly used here
 import 'package:intl/date_symbol_data_local.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'core/constants/google_oauth_config.dart';
 import 'core/adapters/color_adapter.dart';
 import 'core/network/network_info.dart';
+import 'core/network/google_auth_service.dart'; // Import GoogleAuthService
 import 'features/calendar/data/datasources/google_calendar_remote_datasource.dart';
 import 'features/calendar/data/datasources/local_calendar_datasource.dart';
 import 'features/calendar/data/repositories/calendar_repository_impl.dart';
@@ -130,10 +131,16 @@ class MyApp extends StatelessWidget {
     final networkInfo = NetworkInfoImpl(Connectivity());
     print('   ✅ Network info created');
 
-    // ✅ Data sources dengan OAuth configuration
-    final googleSignIn = _createGoogleSignIn();
+    // ✅ Initialize and use GoogleAuthService
+    final googleAuthService = GoogleAuthService();
+    googleAuthService.initialize(); // Initialize GoogleAuthService
+    print('   ✅ GoogleAuthService initialized');
+
+    // ✅ Data sources
+    // final googleSignIn = _createGoogleSignIn(); // REMOVED: GoogleAuthService handles this
     final remoteDataSource = GoogleCalendarRemoteDataSourceImpl(
-      googleSignIn: googleSignIn,
+      // googleSignIn: googleSignIn, // REMOVED
+      googleAuthService: googleAuthService, // ADDED
     );
     print('   ✅ Remote data source created');
 
@@ -174,58 +181,7 @@ class MyApp extends StatelessWidget {
     return bloc;
   }
 
-  // ✅ Create GoogleSignIn based on platform dengan OAuth config
-  GoogleSignIn _createGoogleSignIn() {
-    try {
-      print('🔑 Creating GoogleSignIn for ${_getCurrentPlatform()}...');
-
-      GoogleSignIn googleSignIn;
-
-      if (kIsWeb) {
-        // ✅ Web configuration
-        googleSignIn = GoogleSignIn(
-          clientId: GoogleOAuthConfig.webClientId,
-          scopes: GoogleOAuthConfig.scopes,
-        );
-        print(
-            '   ✅ Web GoogleSignIn created with client ID: ${GoogleOAuthConfig.webClientId.substring(0, 20)}...');
-      } else if (Platform.isAndroid) {
-        // ✅ Android configuration (menggunakan google-services.json)
-        googleSignIn = GoogleSignIn(
-          scopes: GoogleOAuthConfig.scopes,
-          // Android client ID akan dibaca dari google-services.json
-        );
-        print('   ✅ Android GoogleSignIn created (using google-services.json)');
-      } else if (Platform.isIOS) {
-        // ✅ iOS configuration (menggunakan GoogleService-Info.plist)
-        googleSignIn = GoogleSignIn(
-          scopes: GoogleOAuthConfig.scopes,
-          // iOS client ID akan dibaca dari GoogleService-Info.plist
-        );
-        print('   ✅ iOS GoogleSignIn created (using GoogleService-Info.plist)');
-      } else {
-        // ✅ Fallback configuration
-        googleSignIn = GoogleSignIn(
-          clientId: GoogleOAuthConfig.webClientId,
-          scopes: GoogleOAuthConfig.scopes,
-        );
-        print('   ⚠️ Using fallback GoogleSignIn configuration');
-      }
-
-      print('   📋 Scopes: ${GoogleOAuthConfig.scopes.join(', ')}');
-      return googleSignIn;
-    } catch (e) {
-      print('⚠️ Error creating GoogleSignIn: $e');
-
-      // ✅ Fallback configuration
-      final fallbackSignIn = GoogleSignIn(
-        clientId: GoogleOAuthConfig.webClientId,
-        scopes: GoogleOAuthConfig.scopes,
-      );
-      print('   🔄 Using fallback GoogleSignIn due to error');
-      return fallbackSignIn;
-    }
-  }
+  // REMOVED _createGoogleSignIn method as GoogleAuthService now handles GoogleSignIn instance.
 }
 
 // ✅ Global error handler
