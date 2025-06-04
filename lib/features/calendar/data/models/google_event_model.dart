@@ -36,55 +36,138 @@ class GoogleEventModel {
     this.creator,
   });
 
-  factory GoogleEventModel.fromJson(Map<String, dynamic> json) =>
-      _$GoogleEventModelFromJson(json);
+  factory GoogleEventModel.fromJson(Map<String, dynamic> json) {
+    try {
+      // ✅ FIX: Safe JSON parsing dengan type checking
+      return GoogleEventModel(
+        id: _safeString(json['id']),
+        summary: _safeString(json['summary']),
+        description: _safeString(json['description']),
+        location: _safeString(json['location']),
+        start: _safeGoogleEventDateTime(json['start']),
+        end: _safeGoogleEventDateTime(json['end']),
+        attendees: _safeAttendeesList(json['attendees']),
+        recurrence: _safeStringList(json['recurrence']),
+        created: _safeGoogleEventDateTime(json['created']),
+        updated: _safeGoogleEventDateTime(json['updated']),
+        colorId: _safeString(json['colorId']),
+        creator: _safeGoogleEventCreator(json['creator']),
+      );
+    } catch (e) {
+      print('❌ Error parsing GoogleEventModel: $e');
+      print('📄 JSON data: $json');
+      rethrow;
+    }
+  }
 
   Map<String, dynamic> toJson() => _$GoogleEventModelToJson(this);
 
-  CalendarEventModel toCalendarEventModel() {
-    final startDateTime = start?.toDateTime() ?? DateTime.now();
-    final endDateTime =
-        end?.toDateTime() ?? startDateTime.add(const Duration(hours: 1));
-    final isAllDay = start?.date != null;
+  // ✅ SAFE PARSING HELPERS
+  static String? _safeString(dynamic value) {
+    if (value == null) return null;
+    return value.toString();
+  }
 
-    return CalendarEventModel(
-      id: const Uuid().v4(),
-      title: summary ?? 'Tanpa Judul',
-      description: description,
-      startTime: startDateTime,
-      endTime: endDateTime,
-      location: location,
-      isAllDay: isAllDay,
-      color: _getColorFromId(colorId),
-      googleEventId: id,
-      attendees:
-          attendees
-              ?.map((a) => a.email ?? '')
-              .where((e) => e.isNotEmpty)
-              .toList() ??
-          [],
-      recurrence: recurrence?.join(', '),
-      isFromGoogle: true,
-      lastModified: updated?.toDateTime(),
-      createdBy: creator?.email,
-    );
+  static List<String>? _safeStringList(dynamic value) {
+    if (value == null) return null;
+    if (value is List) {
+      return value.map((item) => item.toString()).toList();
+    }
+    return null;
+  }
+
+  static GoogleEventDateTime? _safeGoogleEventDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Map<String, dynamic>) {
+      return GoogleEventDateTime.fromJson(value);
+    }
+    return null;
+  }
+
+  static List<GoogleEventAttendee>? _safeAttendeesList(dynamic value) {
+    if (value == null) return null;
+    if (value is List) {
+      return value
+          .where((item) => item is Map<String, dynamic>)
+          .map((item) =>
+              GoogleEventAttendee.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return null;
+  }
+
+  static GoogleEventCreator? _safeGoogleEventCreator(dynamic value) {
+    if (value == null) return null;
+    if (value is Map<String, dynamic>) {
+      return GoogleEventCreator.fromJson(value);
+    }
+    return null;
+  }
+
+  CalendarEventModel toCalendarEventModel() {
+    try {
+      final startDateTime = start?.toDateTime() ?? DateTime.now();
+      final endDateTime =
+          end?.toDateTime() ?? startDateTime.add(const Duration(hours: 1));
+      final isAllDay = start?.date != null;
+
+      print('🔄 Converting Google event to Calendar event:');
+      print('   ID: $id');
+      print('   Title: $summary');
+      print('   Start: $startDateTime');
+      print('   End: $endDateTime');
+      print('   All Day: $isAllDay');
+
+      return CalendarEventModel(
+        id: const Uuid().v4(),
+        title: summary ?? 'Tanpa Judul',
+        description: description,
+        startTime: startDateTime,
+        endTime: endDateTime,
+        location: location,
+        isAllDay: isAllDay,
+        color: _getColorFromId(colorId),
+        googleEventId: id,
+        attendees: attendees
+                ?.map((a) => a.email ?? '')
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            [],
+        recurrence: recurrence?.join(', '),
+        isFromGoogle: true,
+        lastModified: updated?.toDateTime(),
+        createdBy: creator?.email,
+      );
+    } catch (e) {
+      print('❌ Error converting to CalendarEventModel: $e');
+      print('   Event ID: $id');
+      print('   Event Summary: $summary');
+      rethrow;
+    }
   }
 
   static GoogleEventModel fromCalendarEventModel(CalendarEventModel event) {
-    return GoogleEventModel(
-      id: event.googleEventId,
-      summary: event.title,
-      description: event.description,
-      location: event.location,
-      start: GoogleEventDateTime.fromDateTime(event.startTime, event.isAllDay),
-      end: GoogleEventDateTime.fromDateTime(event.endTime, event.isAllDay),
-      attendees:
-          event.attendees
-              .map((email) => GoogleEventAttendee(email: email))
-              .toList(),
-      recurrence: event.recurrence?.split(', '),
-      colorId: _getIdFromColor(event.color),
-    );
+    try {
+      return GoogleEventModel(
+        id: event.googleEventId,
+        summary: event.title,
+        description: event.description,
+        location: event.location,
+        start:
+            GoogleEventDateTime.fromDateTime(event.startTime, event.isAllDay),
+        end: GoogleEventDateTime.fromDateTime(event.endTime, event.isAllDay),
+        attendees: event.attendees
+            .map((email) => GoogleEventAttendee(email: email))
+            .toList(),
+        recurrence: event.recurrence?.split(', '),
+        colorId: _getIdFromColor(event.color),
+      );
+    } catch (e) {
+      print('❌ Error converting from CalendarEventModel: $e');
+      print('   Event ID: ${event.id}');
+      print('   Event Title: ${event.title}');
+      rethrow;
+    }
   }
 
   Color _getColorFromId(String? colorId) {
@@ -140,31 +223,55 @@ class GoogleEventDateTime {
 
   GoogleEventDateTime({this.date, this.dateTime, this.timeZone});
 
-  factory GoogleEventDateTime.fromJson(Map<String, dynamic> json) =>
-      _$GoogleEventDateTimeFromJson(json);
+  factory GoogleEventDateTime.fromJson(Map<String, dynamic> json) {
+    try {
+      return GoogleEventDateTime(
+        date: json['date']?.toString(),
+        dateTime: json['dateTime']?.toString(),
+        timeZone: json['timeZone']?.toString(),
+      );
+    } catch (e) {
+      print('❌ Error parsing GoogleEventDateTime: $e');
+      print('📄 JSON: $json');
+      rethrow;
+    }
+  }
 
   Map<String, dynamic> toJson() => _$GoogleEventDateTimeToJson(this);
 
   static GoogleEventDateTime fromDateTime(DateTime dateTime, bool isAllDay) {
-    if (isAllDay) {
-      return GoogleEventDateTime(
-        date: dateTime.toIso8601String().split('T')[0],
-      );
-    } else {
-      return GoogleEventDateTime(
-        dateTime: dateTime.toIso8601String(),
-        timeZone: 'Asia/Jakarta',
-      );
+    try {
+      if (isAllDay) {
+        return GoogleEventDateTime(
+          date: dateTime.toIso8601String().split('T')[0],
+        );
+      } else {
+        return GoogleEventDateTime(
+          dateTime: dateTime.toIso8601String(),
+          timeZone: 'Asia/Jakarta',
+        );
+      }
+    } catch (e) {
+      print('❌ Error creating GoogleEventDateTime: $e');
+      rethrow;
     }
   }
 
   DateTime toDateTime() {
-    if (date != null) {
-      return DateTime.parse(date!);
-    } else if (dateTime != null) {
-      return DateTime.parse(dateTime!);
-    } else {
-      return DateTime.now();
+    try {
+      if (date != null) {
+        return DateTime.parse(date!);
+      } else if (dateTime != null) {
+        return DateTime.parse(dateTime!);
+      } else {
+        print('⚠️ No date/dateTime found, using current time');
+        return DateTime.now();
+      }
+    } catch (e) {
+      print('❌ Error parsing DateTime: $e');
+      print('   Date: $date');
+      print('   DateTime: $dateTime');
+      return DateTime.now(); // Fallback
     }
   }
 }
@@ -177,8 +284,19 @@ class GoogleEventAttendee {
 
   GoogleEventAttendee({this.email, this.displayName, this.responseStatus});
 
-  factory GoogleEventAttendee.fromJson(Map<String, dynamic> json) =>
-      _$GoogleEventAttendeeFromJson(json);
+  factory GoogleEventAttendee.fromJson(Map<String, dynamic> json) {
+    try {
+      return GoogleEventAttendee(
+        email: json['email']?.toString(),
+        displayName: json['displayName']?.toString(),
+        responseStatus: json['responseStatus']?.toString(),
+      );
+    } catch (e) {
+      print('❌ Error parsing GoogleEventAttendee: $e');
+      print('📄 JSON: $json');
+      rethrow;
+    }
+  }
 
   Map<String, dynamic> toJson() => _$GoogleEventAttendeeToJson(this);
 }
@@ -190,8 +308,18 @@ class GoogleEventCreator {
 
   GoogleEventCreator({this.email, this.displayName});
 
-  factory GoogleEventCreator.fromJson(Map<String, dynamic> json) =>
-      _$GoogleEventCreatorFromJson(json);
+  factory GoogleEventCreator.fromJson(Map<String, dynamic> json) {
+    try {
+      return GoogleEventCreator(
+        email: json['email']?.toString(),
+        displayName: json['displayName']?.toString(),
+      );
+    } catch (e) {
+      print('❌ Error parsing GoogleEventCreator: $e');
+      print('📄 JSON: $json');
+      rethrow;
+    }
+  }
 
   Map<String, dynamic> toJson() => _$GoogleEventCreatorToJson(this);
 }
@@ -214,8 +342,34 @@ class GoogleCalendarResponse {
     this.nextPageToken,
   });
 
-  factory GoogleCalendarResponse.fromJson(Map<String, dynamic> json) =>
-      _$GoogleCalendarResponseFromJson(json);
+  factory GoogleCalendarResponse.fromJson(Map<String, dynamic> json) {
+    try {
+      return GoogleCalendarResponse(
+        kind: json['kind']?.toString(),
+        etag: json['etag']?.toString(),
+        summary: json['summary']?.toString(),
+        description: json['description']?.toString(),
+        items: _safeEventsList(json['items']),
+        nextPageToken: json['nextPageToken']?.toString(),
+      );
+    } catch (e) {
+      print('❌ Error parsing GoogleCalendarResponse: $e');
+      print('📄 JSON: $json');
+      rethrow;
+    }
+  }
 
   Map<String, dynamic> toJson() => _$GoogleCalendarResponseToJson(this);
+
+  static List<GoogleEventModel>? _safeEventsList(dynamic value) {
+    if (value == null) return null;
+    if (value is List) {
+      return value
+          .where((item) => item is Map<String, dynamic>)
+          .map(
+              (item) => GoogleEventModel.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+    return null;
+  }
 }

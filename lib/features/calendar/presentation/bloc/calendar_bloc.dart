@@ -40,7 +40,6 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         forceRefresh: event.forceRefresh,
       );
 
-      // ✅ FIX: Handle async operations sequentially
       await result.fold(
         (failure) async {
           if (!emit.isDone) {
@@ -54,7 +53,6 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
           }
         },
         (events) async {
-          // Get auth status and last sync time BEFORE emitting
           final authResult = await useCases
               .authenticateGoogleCalendar.repository
               .isGoogleCalendarAuthenticated();
@@ -65,7 +63,6 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
               .getLastSyncTime();
           final lastSyncTime = syncTimeResult.fold((l) => null, (r) => r);
 
-          // Check if emit is still valid before emitting
           if (!emit.isDone) {
             emit(
               CalendarLoaded(
@@ -99,7 +96,6 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         forceRefresh: event.forceRefresh,
       );
 
-      // ✅ FIX: Handle async operations sequentially
       await result.fold(
         (failure) async {
           if (!emit.isDone) {
@@ -278,7 +274,6 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
 
       final result = await useCases.syncGoogleCalendar(event.dateRange);
 
-      // ✅ FIX: Handle async operations sequentially
       await result.fold(
         (failure) async {
           if (!emit.isDone) {
@@ -321,30 +316,39 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     }
   }
 
+  // ✅ IMPROVED: Better error handling for authentication
   Future<void> _onAuthenticateGoogle(
     AuthenticateGoogle event,
     Emitter<CalendarState> emit,
   ) async {
     try {
+      print('🔐 Starting Google authentication...');
+
+      // Show loading state
+      emit(CalendarLoading());
+
       final result = await useCases.authenticateGoogleCalendar();
 
       result.fold(
         (failure) {
+          print('❌ Authentication failed: ${failure.message}');
           if (!emit.isDone) {
             emit(GoogleAuthFailed(failure.message));
           }
         },
         (success) {
+          print('✅ Authentication result: $success');
           if (!emit.isDone) {
             if (success) {
               emit(GoogleAuthSuccess());
             } else {
-              emit(const GoogleAuthFailed('Login gagal'));
+              emit(const GoogleAuthFailed('Login gagal - tidak ada respons'));
             }
           }
         },
       );
     } catch (e) {
+      print('❌ Authentication error: $e');
       ErrorHandler.logError(e);
       if (!emit.isDone) {
         emit(GoogleAuthFailed('Login error: ${e.toString()}'));
@@ -444,7 +448,6 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
       _eventsSubscription =
           useCases.watchCalendarEvents(event.dateRange).listen(
         (events) {
-          // ✅ FIX: Check emit.isDone before emitting in stream callback
           if (!emit.isDone) {
             if (state is CalendarLoaded) {
               final currentState = state as CalendarLoaded;

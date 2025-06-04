@@ -31,11 +31,22 @@ import 'features/calendar/presentation/pages/calendar_home_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  print('🚀 Starting Calendar App...');
+
+  // ✅ Set up global error handler
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    MyAppErrorHandler.handleError(
+        details.exception, details.stack ?? StackTrace.current);
+  };
+
   // Initialize Hive
   await Hive.initFlutter();
+  print('✅ Hive initialized');
 
   // Initialize Date Formatting for Indonesian locale
   await initializeDateFormatting('id_ID', null);
+  print('✅ Date formatting initialized');
 
   try {
     // ✅ Register Hive adapters
@@ -60,8 +71,10 @@ void main() async {
     print('   Client ID: ${GoogleOAuthConfig.clientId}');
     print('   Project Number: ${GoogleOAuthConfig.projectNumber}');
     print('   Scopes: ${GoogleOAuthConfig.scopes.join(', ')}');
+    print('   Development Mode: ${GoogleOAuthConfig.isDevelopment}');
   }
 
+  print('✅ App initialization complete');
   runApp(MyApp());
 }
 
@@ -99,24 +112,39 @@ class MyApp extends StatelessWidget {
           ),
         ),
         home: const CalendarHomePage(),
+        // ✅ Add error widget builder for better error handling
+        builder: (context, widget) {
+          ErrorWidget.builder = (FlutterErrorDetails errorDetails) {
+            return MyAppErrorWidget(errorDetails: errorDetails);
+          };
+          return widget!;
+        },
       ),
     );
   }
 
   CalendarBloc _createCalendarBloc() {
+    print('🏗️ Creating Calendar Bloc...');
+
     // ✅ Network
     final networkInfo = NetworkInfoImpl(Connectivity());
+    print('   ✅ Network info created');
 
     // ✅ Data sources dengan OAuth configuration
     final googleSignIn = _createGoogleSignIn();
     final remoteDataSource = GoogleCalendarRemoteDataSourceImpl(
       googleSignIn: googleSignIn,
     );
+    print('   ✅ Remote data source created');
+
     final localDataSource = LocalCalendarDataSourceImpl();
+    print('   ✅ Local data source created');
 
     // ✅ Initialize local data source
-    localDataSource.init().catchError((error) {
-      print('⚠️ Local data source initialization error: $error');
+    localDataSource.init().then((_) {
+      print('   ✅ Local data source initialized');
+    }).catchError((error) {
+      print('   ⚠️ Local data source initialization error: $error');
     });
 
     // ✅ Repository
@@ -125,6 +153,7 @@ class MyApp extends StatelessWidget {
       localDataSource: localDataSource,
       networkInfo: networkInfo,
     );
+    print('   ✅ Repository created');
 
     // ✅ Use cases
     final useCases = CalendarUseCases(
@@ -137,41 +166,65 @@ class MyApp extends StatelessWidget {
       authenticateGoogleCalendar: AuthenticateGoogleCalendar(repository),
       watchCalendarEvents: WatchCalendarEvents(repository),
     );
+    print('   ✅ Use cases created');
 
-    return CalendarBloc(useCases: useCases);
+    final bloc = CalendarBloc(useCases: useCases);
+    print('✅ Calendar Bloc created successfully');
+
+    return bloc;
   }
 
   // ✅ Create GoogleSignIn based on platform dengan OAuth config
   GoogleSignIn _createGoogleSignIn() {
     try {
+      print('🔑 Creating GoogleSignIn for ${_getCurrentPlatform()}...');
+
+      GoogleSignIn googleSignIn;
+
       if (kIsWeb) {
         // ✅ Web configuration
-        return GoogleSignIn(
+        googleSignIn = GoogleSignIn(
           clientId: GoogleOAuthConfig.webClientId,
           scopes: GoogleOAuthConfig.scopes,
         );
+        print(
+            '   ✅ Web GoogleSignIn created with client ID: ${GoogleOAuthConfig.webClientId.substring(0, 20)}...');
       } else if (Platform.isAndroid) {
         // ✅ Android configuration (menggunakan google-services.json)
-        return GoogleSignIn(
+        googleSignIn = GoogleSignIn(
           scopes: GoogleOAuthConfig.scopes,
           // Android client ID akan dibaca dari google-services.json
         );
+        print('   ✅ Android GoogleSignIn created (using google-services.json)');
       } else if (Platform.isIOS) {
         // ✅ iOS configuration (menggunakan GoogleService-Info.plist)
-        return GoogleSignIn(
+        googleSignIn = GoogleSignIn(
           scopes: GoogleOAuthConfig.scopes,
           // iOS client ID akan dibaca dari GoogleService-Info.plist
         );
+        print('   ✅ iOS GoogleSignIn created (using GoogleService-Info.plist)');
+      } else {
+        // ✅ Fallback configuration
+        googleSignIn = GoogleSignIn(
+          clientId: GoogleOAuthConfig.webClientId,
+          scopes: GoogleOAuthConfig.scopes,
+        );
+        print('   ⚠️ Using fallback GoogleSignIn configuration');
       }
+
+      print('   📋 Scopes: ${GoogleOAuthConfig.scopes.join(', ')}');
+      return googleSignIn;
     } catch (e) {
       print('⚠️ Error creating GoogleSignIn: $e');
-    }
 
-    // ✅ Fallback configuration
-    return GoogleSignIn(
-      clientId: GoogleOAuthConfig.webClientId,
-      scopes: GoogleOAuthConfig.scopes,
-    );
+      // ✅ Fallback configuration
+      final fallbackSignIn = GoogleSignIn(
+        clientId: GoogleOAuthConfig.webClientId,
+        scopes: GoogleOAuthConfig.scopes,
+      );
+      print('   🔄 Using fallback GoogleSignIn due to error');
+      return fallbackSignIn;
+    }
   }
 }
 
@@ -181,6 +234,14 @@ class MyAppErrorHandler {
     if (GoogleOAuthConfig.enableDebugLogs) {
       print('🚨 Global Error: $error');
       print('📍 Stack Trace: $stackTrace');
+    }
+
+    // Log critical errors
+    if (error.toString().contains('Invalid argument (expiry)') ||
+        error.toString().contains('Access token') ||
+        error.toString().contains('OAuth') ||
+        error.toString().contains('Google')) {
+      print('🔴 CRITICAL AUTH ERROR: $error');
     }
 
     // Bisa ditambahkan logging ke crash analytics di production
@@ -196,48 +257,74 @@ class MyAppErrorWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isAuthError = errorDetails.exception
+            .toString()
+            .contains('Invalid argument (expiry)') ||
+        errorDetails.exception.toString().contains('Access token') ||
+        errorDetails.exception.toString().contains('OAuth') ||
+        errorDetails.exception.toString().contains('Google');
+
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(
-          title: const Text('Something went wrong!'),
-          backgroundColor: Colors.red,
+          title: Text(
+              isAuthError ? 'Authentication Error' : 'Something went wrong!'),
+          backgroundColor: isAuthError ? Colors.orange : Colors.red,
           foregroundColor: Colors.white,
         ),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 64, color: Colors.red),
-              const SizedBox(height: 16),
-              const Text(
-                'An error occurred in the application',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              if (GoogleOAuthConfig.enableDebugLogs) ...[
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(isAuthError ? Icons.lock_clock : Icons.error_outline,
+                    size: 64, color: isAuthError ? Colors.orange : Colors.red),
                 const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  margin: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
+                Text(
+                  isAuthError
+                      ? 'Google Authentication Error'
+                      : 'An error occurred in the application',
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isAuthError
+                      ? 'There was a problem with Google Calendar authentication. Please try signing in again.'
+                      : 'The application encountered an unexpected error.',
+                  style: const TextStyle(fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                if (GoogleOAuthConfig.enableDebugLogs) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      errorDetails.exception.toString(),
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   ),
-                  child: Text(
-                    errorDetails.exception.toString(),
-                    style: const TextStyle(fontSize: 12),
+                ],
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    // Restart app atau navigate ke home
+                    runApp(MyApp());
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isAuthError ? Colors.orange : Colors.blue,
                   ),
+                  child: Text(isAuthError ? 'Try Again' : 'Restart App'),
                 ),
               ],
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  // Restart app atau navigate ke home
-                  runApp(MyApp());
-                },
-                child: const Text('Restart App'),
-              ),
-            ],
+            ),
           ),
         ),
       ),
