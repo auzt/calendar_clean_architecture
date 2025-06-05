@@ -411,18 +411,16 @@ class _DayViewWidgetState extends State<DayViewWidget> {
   void _createEventAtPosition(double yPosition) {
     double hours = yPosition / hourHeight;
     int targetHour = hours.floor();
-    int targetMinute = ((hours - targetHour) * 60).round();
-    targetMinute = (targetMinute ~/ minuteInterval) * minuteInterval;
-    if (targetMinute >= 60) {
-      targetHour += 1;
-      targetMinute = 0;
-    }
+    int targetMinute =
+        0; // Langsung set menit ke 00 sesuai dengan jam yang diklik
+
     if (targetHour < 0) targetHour = 0;
-
-    // If tap is between 7:00 and 8:00, set start time to 7:00 AM
-    if (targetHour == 7) targetMinute = 0;
-
-    if (targetHour >= 24) targetHour = 23;
+    // Jika pengguna mengklik di area setelah jam 23:59 (misalnya jika tampilan memungkinkan scroll sedikit melebihi 24 jam),
+    // kita batasi jam mulai ke 23:00.
+    if (targetHour >= 24) {
+      targetHour = 23;
+      // targetMinute sudah 0, jadi akan menjadi 23:00
+    }
 
     DateTime baseDate = DateTime(
       widget.date.year,
