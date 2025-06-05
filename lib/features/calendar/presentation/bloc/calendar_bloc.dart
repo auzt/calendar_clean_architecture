@@ -1,10 +1,13 @@
 // lib/features/calendar/presentation/bloc/calendar_bloc.dart
+// UPDATED VERSION - Menggunakan forceSync untuk mencegah duplikasi
+
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/error/failures.dart';
 import '../../../../core/error/error_handler.dart';
 import '../../domain/entities/calendar_event.dart' as domain;
 import '../../domain/usecases/calendar_usecases.dart';
+import '../../data/repositories/calendar_repository_impl.dart'; // ✅ TAMBAHAN IMPORT INI
 import 'calendar_event.dart';
 import 'calendar_state.dart';
 
@@ -259,6 +262,7 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     }
   }
 
+  // ✅ UPDATED: Menggunakan forceSync untuk mencegah duplikasi
   Future<void> _onSyncWithGoogle(
     SyncWithGoogle event,
     Emitter<CalendarState> emit,
@@ -272,44 +276,94 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
         emit(CalendarLoading());
       }
 
-      final result = await useCases.syncGoogleCalendar(event.dateRange);
+      print(
+          '🔄 Manual sync started for range: ${event.dateRange.startDate} to ${event.dateRange.endDate}');
 
-      await result.fold(
-        (failure) async {
-          if (!emit.isDone) {
-            emit(
-              CalendarError(
-                message: failure.message,
-                isNetworkError: failure is NetworkFailure,
-                isAuthError: failure is AuthFailure,
-              ),
-            );
-          }
-        },
-        (events) async {
-          final authResult = await useCases
-              .authenticateGoogleCalendar.repository
-              .isGoogleCalendarAuthenticated();
-          final isAuthenticated = authResult.fold((l) => false, (r) => r);
+      // ✅ Gunakan repository langsung untuk forceSync
+      final repository = useCases.authenticateGoogleCalendar.repository;
 
-          final syncTimeResult = await useCases
-              .authenticateGoogleCalendar.repository
-              .getLastSyncTime();
-          final lastSyncTime = syncTimeResult.fold((l) => null, (r) => r);
+      // Cast repository ke implementation untuk akses forceSync
+      if (repository is CalendarRepositoryImpl) {
+        final result = await repository.forceSync(event.dateRange);
 
-          if (!emit.isDone) {
-            emit(
-              CalendarLoaded(
-                events: events,
-                lastSyncTime: lastSyncTime,
-                isGoogleAuthenticated: isAuthenticated,
-              ),
-            );
-          }
-        },
-      );
+        await result.fold(
+          (failure) async {
+            print('❌ Manual sync failed: ${failure.message}');
+            if (!emit.isDone) {
+              emit(
+                CalendarError(
+                  message: 'Sync gagal: ${failure.message}',
+                  isNetworkError: failure is NetworkFailure,
+                  isAuthError: failure is AuthFailure,
+                ),
+              );
+            }
+          },
+          (events) async {
+            print('✅ Manual sync completed with ${events.length} events');
+
+            final authResult = await repository.isGoogleCalendarAuthenticated();
+            final isAuthenticated = authResult.fold((l) => false, (r) => r);
+
+            final syncTimeResult = await repository.getLastSyncTime();
+            final lastSyncTime = syncTimeResult.fold((l) => null, (r) => r);
+
+            if (!emit.isDone) {
+              emit(
+                CalendarLoaded(
+                  events: events,
+                  lastSyncTime: lastSyncTime,
+                  isGoogleAuthenticated: isAuthenticated,
+                ),
+              );
+            }
+          },
+        );
+      } else {
+        // Fallback ke sync biasa jika tidak bisa cast
+        final result = await useCases.syncGoogleCalendar(event.dateRange);
+
+        await result.fold(
+          (failure) async {
+            print('❌ Fallback sync failed: ${failure.message}');
+            if (!emit.isDone) {
+              emit(
+                CalendarError(
+                  message: 'Sync gagal: ${failure.message}',
+                  isNetworkError: failure is NetworkFailure,
+                  isAuthError: failure is AuthFailure,
+                ),
+              );
+            }
+          },
+          (events) async {
+            print('✅ Fallback sync completed with ${events.length} events');
+
+            final authResult = await useCases
+                .authenticateGoogleCalendar.repository
+                .isGoogleCalendarAuthenticated();
+            final isAuthenticated = authResult.fold((l) => false, (r) => r);
+
+            final syncTimeResult = await useCases
+                .authenticateGoogleCalendar.repository
+                .getLastSyncTime();
+            final lastSyncTime = syncTimeResult.fold((l) => null, (r) => r);
+
+            if (!emit.isDone) {
+              emit(
+                CalendarLoaded(
+                  events: events,
+                  lastSyncTime: lastSyncTime,
+                  isGoogleAuthenticated: isAuthenticated,
+                ),
+              );
+            }
+          },
+        );
+      }
     } catch (e) {
       ErrorHandler.logError(e);
+      print('❌ Manual sync error: $e');
       if (!emit.isDone) {
         emit(CalendarError(message: 'Gagal sinkronisasi: ${e.toString()}'));
       }

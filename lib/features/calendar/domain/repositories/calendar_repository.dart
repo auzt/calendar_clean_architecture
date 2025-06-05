@@ -1,4 +1,6 @@
 // lib/features/calendar/domain/repositories/calendar_repository.dart
+// UPDATED VERSION - Menambahkan forceSync method
+
 import 'package:dartz/dartz.dart';
 import '../../../../core/error/failures.dart';
 import '../entities/calendar_event.dart';
@@ -28,6 +30,16 @@ abstract class CalendarRepository {
 
   /// Sinkronisasi dengan Google Calendar
   Future<Either<Failure, List<CalendarEvent>>> syncWithGoogleCalendar(
+    CalendarDateRange dateRange,
+  );
+
+  /// ✅ TAMBAHAN: Force sync untuk mencegah duplikasi
+  /// Method ini akan:
+  /// 1. Mengambil data fresh dari Google Calendar
+  /// 2. Membersihkan data lokal untuk range tertentu
+  /// 3. Merge dengan smart duplicate detection
+  /// 4. Menyimpan hasil final tanpa duplikasi
+  Future<Either<Failure, List<CalendarEvent>>> forceSync(
     CalendarDateRange dateRange,
   );
 

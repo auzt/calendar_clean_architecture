@@ -1,4 +1,6 @@
 // lib/core/constants/google_calendar_constants.dart
+// UPDATED - Tambah timezone constants
+
 import 'google_oauth_config.dart';
 
 class GoogleCalendarConstants {
@@ -7,12 +9,21 @@ class GoogleCalendarConstants {
 
   static const String primaryCalendarId = 'primary';
   static const int maxEventsPerRequest = 2500;
-  static const String timeZone = 'Asia/Jakarta';
+
+  // ✅ TIMEZONE SETTINGS - Sesuaikan dengan lokasi Anda
+  static const String timeZone = 'Asia/Jakarta'; // GMT+7
+  static const int timeZoneOffsetHours = 7; // Offset from UTC
+
+  // Alternative timezone jika diperlukan
+  static const String alternativeTimeZone = 'Asia/Jakarta';
+  static const List<String> supportedTimeZones = [
+    'Asia/Jakarta', // Indonesia Western Time (WIB)
+    'Asia/Makassar', // Indonesia Central Time (WITA)
+    'Asia/Jayapura', // Indonesia Eastern Time (WIT)
+  ];
 
   // ✅ Client ID berdasarkan platform
   static String get clientId => GoogleOAuthConfig.clientId;
-
-  // ✅ Project number dari OAuth config
   static String get projectNumber => GoogleOAuthConfig.projectNumber;
 
   // API Configuration
@@ -69,7 +80,7 @@ class GoogleCalendarConstants {
   static const Duration defaultEventDuration = Duration(hours: 1);
 
   // Notification settings
-  static const List<int> defaultReminderMinutes = [15, 30]; // Default reminders
+  static const List<int> defaultReminderMinutes = [15, 30];
   static const int maxReminders = 5;
 
   // Calendar limits
@@ -81,4 +92,19 @@ class GoogleCalendarConstants {
   static bool get isDevelopment => GoogleOAuthConfig.isDevelopment;
   static bool get enableDebugLogs => isDevelopment;
   static bool get enableVerboseLogging => isDevelopment;
+
+  // ✅ TIMEZONE UTILITIES
+  static DateTime convertUtcToLocal(DateTime utcTime) {
+    return utcTime.add(Duration(hours: timeZoneOffsetHours));
+  }
+
+  static DateTime convertLocalToUtc(DateTime localTime) {
+    return localTime.subtract(Duration(hours: timeZoneOffsetHours));
+  }
+
+  static bool isTimezoneMismatch(DateTime time1, DateTime time2) {
+    // Check if there's a significant time difference that might indicate timezone issue
+    final diff = time1.difference(time2).inHours.abs();
+    return diff >= timeZoneOffsetHours - 1 && diff <= timeZoneOffsetHours + 1;
+  }
 }
