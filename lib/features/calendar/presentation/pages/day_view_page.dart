@@ -1,5 +1,5 @@
 // lib/features/calendar/presentation/pages/day_view_page.dart
-// SIMPLE FIXED VERSION - Guaranteed no jumping
+// FIXED VERSION - Mengatasi 3 masalah utama
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -22,7 +22,7 @@ class DayViewPage extends StatefulWidget {
   State<DayViewPage> createState() => _DayViewPageState();
 }
 
-class _DayViewPageState extends State<DayViewPage> {
+class _DayViewPageState extends State<DayViewPage> with WidgetsBindingObserver {
   late DateTime _selectedDate;
   late PageController _pageController;
 
@@ -40,16 +40,22 @@ class _DayViewPageState extends State<DayViewPage> {
   DateTime? _originalEndTime;
   bool _hasUndoData = false;
 
-  // ✅ SIMPLE LOCAL EVENTS - Ini satu-satunya source of truth
+  // ✅ LOCAL EVENTS - Source of truth
   List<CalendarEvent> _localEvents = [];
   bool _isLoadingEvents = false;
 
-  // ✅ CRITICAL: Flag untuk block external updates saat drag
+  // ✅ DRAG STATE - Prevent external updates during drag
   bool _blockExternalUpdates = false;
+
+  // ✅ AUTO-REFRESH TIMER untuk sync periodic
+  Timer? _autoRefreshTimer;
+  static const Duration _autoRefreshInterval = Duration(minutes: 2);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _selectedDate = DateTime(
       widget.initialDate.year,
       widget.initialDate.month,
@@ -59,13 +65,57 @@ class _DayViewPageState extends State<DayViewPage> {
 
     // Load events for the selected date
     _loadEventsForDate(_selectedDate);
+
+    // ✅ Start auto-refresh timer untuk sync berkala
+    _startAutoRefreshTimer();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _dismissCurrentSnackBar();
     _pageController.dispose();
+    _autoRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  // ✅ Handle app lifecycle changes
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed) {
+      // App kembali ke foreground - refresh events
+      print('📱 App resumed - refreshing day view');
+      _refreshEventsQuietly();
+    }
+  }
+
+  // ✅ START AUTO-REFRESH TIMER
+  void _startAutoRefreshTimer() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (timer) {
+      if (mounted && !_blockExternalUpdates) {
+        print('🔄 Auto-refresh triggered');
+        _refreshEventsQuietly();
+      }
+    });
+  }
+
+  // ✅ QUIET REFRESH - Tidak mengganggu UI
+  void _refreshEventsQuietly() {
+    if (_blockExternalUpdates) {
+      print('🚧 Skipping auto-refresh - drag in progress');
+      return;
+    }
+
+    // Refresh tanpa loading indicator
+    context.read<CalendarBloc>().add(
+          calendar_events.LoadEventsForDate(
+            date: _selectedDate,
+            forceRefresh: true,
+          ),
+        );
   }
 
   void _loadEventsForDate(DateTime date) {
@@ -84,7 +134,7 @@ class _DayViewPageState extends State<DayViewPage> {
 
     setState(() {
       _selectedDate = _selectedDate.add(Duration(days: dayOffset));
-      _savedScrollPosition = null; // ✅ Only reset scroll when changing date
+      _savedScrollPosition = null; // Reset scroll when changing date
       _localEvents = []; // Clear local events when changing date
       _blockExternalUpdates = false; // Reset block
     });
@@ -192,10 +242,15 @@ class _DayViewPageState extends State<DayViewPage> {
           IconButton(
             onPressed: () {
               // ✅ PRESERVE scroll position saat refresh
-              print(
-                  '🔄 Refreshing while preserving scroll position: $_savedScrollPosition');
-              _localEvents = []; // Clear local events untuk fresh load
+              print('🔄 Manual refresh with preserved scroll position');
+              _localEvents = []; // Clear untuk fresh load
               _blockExternalUpdates = false;
+
+              // Show loading indicator untuk manual refresh
+              setState(() {
+                _isLoadingEvents = true;
+              });
+
               _loadEventsForDate(_selectedDate);
             },
             icon: const Icon(Icons.refresh),
@@ -209,6 +264,9 @@ class _DayViewPageState extends State<DayViewPage> {
           print('🚧 Block external updates: $_blockExternalUpdates');
 
           if (state is CalendarError) {
+            setState(() {
+              _isLoadingEvents = false;
+            });
             _showSmartSnackBar(
               message: state.message,
               backgroundColor: Colors.red,
@@ -226,8 +284,6 @@ class _DayViewPageState extends State<DayViewPage> {
             );
             if (!_blockExternalUpdates) {
               _removeEventFromLocal(state.eventId);
-            } else {
-              print('🚧 BLOCKED EventDeleted update');
             }
           } else if (state is EventCreated) {
             print('📡 EventCreated received');
@@ -239,19 +295,19 @@ class _DayViewPageState extends State<DayViewPage> {
             );
             if (!_blockExternalUpdates) {
               _addEventToLocal(state.event);
-            } else {
-              print('🚧 BLOCKED EventCreated update');
             }
           } else if (state is CalendarLoaded) {
             print(
                 '📡 CalendarLoaded received with ${state.events.length} events');
-            print('🚧 Block status: $_blockExternalUpdates');
+
+            setState(() {
+              _isLoadingEvents = false;
+            });
 
             // ✅ CRITICAL: Only update if external updates are NOT blocked
             if (!_blockExternalUpdates) {
               print('✅ Applying CalendarLoaded update');
               setState(() {
-                _isLoadingEvents = false;
                 final newEvents = state.events.where((event) {
                   return AppDateUtils.isSameDay(
                           event.startTime, _selectedDate) ||
@@ -265,43 +321,15 @@ class _DayViewPageState extends State<DayViewPage> {
                 }).toList();
 
                 print(
-                    '📋 Before update - Local events count: ${_localEvents.length}');
-                print('📋 New events from server: ${newEvents.length}');
-
+                    '📋 Updating local events: ${_localEvents.length} -> ${newEvents.length}');
                 _localEvents = newEvents;
-
-                print(
-                    '📋 After update - Local events count: ${_localEvents.length}');
-
-                // Debug: Print all local events
-                for (int i = 0; i < _localEvents.length; i++) {
-                  final e = _localEvents[i];
-                  print(
-                      '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
-                }
+                _localEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
               });
               print(
                   '✅ CalendarLoaded update applied - ${_localEvents.length} events');
             } else {
               print(
                   '🚧 BLOCKED CalendarLoaded update - preserving ${_localEvents.length} local events');
-
-              // Debug: Print current local events
-              print('🔍 Current local events (preserved):');
-              for (int i = 0; i < _localEvents.length; i++) {
-                final e = _localEvents[i];
-                print(
-                    '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
-              }
-            }
-          } else if (state is EventUpdated) {
-            print('📡 EventUpdated received for: ${state.event.title}');
-            print('🚧 Block status: $_blockExternalUpdates');
-            if (_blockExternalUpdates) {
-              print('🔕 EventUpdated BLOCKED - local state is source of truth');
-            } else {
-              print(
-                  '⚠️ EventUpdated received when NOT blocked - this might cause issues');
             }
           }
         },
@@ -320,35 +348,26 @@ class _DayViewPageState extends State<DayViewPage> {
             }
           },
           child: _isLoadingEvents
-              ? const Center(child: CircularProgressIndicator())
-              : Builder(
-                  builder: (context) {
-                    // ✅ Debug: Monitor events passed to DayViewWidget
-                    print(
-                        '🎯 Building DayViewWidget with ${_localEvents.length} events:');
-                    for (int i = 0; i < _localEvents.length; i++) {
-                      final e = _localEvents[i];
-                      print(
-                          '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
-                    }
-                    print('📍 Current scroll position: $_savedScrollPosition');
-
-                    return DayViewWidget(
-                      date: _selectedDate,
-                      events:
-                          _localEvents, // ✅ Direct reference, no new list creation
-                      onEventTap: _showEventDetails,
-                      onTimeSlotTap: _createEventAtTime,
-                      onEventMove: _moveEvent,
-                      onScrollPositionChanged: (position) {
-                        // ✅ Always save scroll position
-                        _savedScrollPosition = position;
-                        print('📍 Scroll position saved: $position');
-                      },
-                      initialScrollPosition:
-                          _savedScrollPosition, // ✅ Restore saved position
-                    );
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Memuat events...'),
+                    ],
+                  ),
+                )
+              : DayViewWidget(
+                  date: _selectedDate,
+                  events: _localEvents,
+                  onEventTap: _showEventDetails,
+                  onTimeSlotTap: _createEventAtTime,
+                  onEventMove: _moveEvent,
+                  onScrollPositionChanged: (position) {
+                    _savedScrollPosition = position;
                   },
+                  initialScrollPosition: _savedScrollPosition,
                 ),
         ),
       ),
@@ -360,35 +379,27 @@ class _DayViewPageState extends State<DayViewPage> {
     );
   }
 
-  // ✅ SIMPLE MOVE EVENT - Block external updates dan update local immediately
+  // ✅ FIX 1: IMPROVED MOVE EVENT - UI langsung update, tidak kembali ke posisi awal
   void _moveEvent(CalendarEvent event, DateTime newTime) {
     print('===== MOVE EVENT START =====');
     print('🔄 Moving ${event.title} from ${event.startTime} to $newTime');
 
-    // ✅ CRITICAL: Save current scroll position BEFORE any updates
-    print('💾 Saving current scroll position: $_savedScrollPosition');
+    // ✅ CRITICAL: Save scroll position
+    print('💾 Saving scroll position: $_savedScrollPosition');
 
-    // Debug: Print current local events before
-    print('📋 Local events BEFORE move (${_localEvents.length}):');
-    for (int i = 0; i < _localEvents.length; i++) {
-      final e = _localEvents[i];
-      print(
-          '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
-    }
-
-    // ✅ CRITICAL: Block all external updates
+    // ✅ STEP 1: Block external updates IMMEDIATELY
     setState(() {
       _blockExternalUpdates = true;
     });
     print('🚧 External updates BLOCKED');
 
-    // Save undo data
+    // ✅ STEP 2: Save undo data
     _lastMovedEvent = event.copyWith();
     _originalStartTime = event.startTime;
     _originalEndTime = event.endTime;
     _hasUndoData = true;
 
-    // Calculate new event
+    // ✅ STEP 3: Calculate new event times
     final duration = event.endTime.difference(event.startTime);
     final updatedEvent = event.copyWith(
       startTime: newTime,
@@ -396,40 +407,21 @@ class _DayViewPageState extends State<DayViewPage> {
       lastModified: DateTime.now(),
     );
 
-    // ✅ CRITICAL: Update local events immediately dengan MINIMAL rebuild
+    // ✅ STEP 4: Update local events IMMEDIATELY untuk UI responsif
     setState(() {
       final index = _localEvents.indexWhere((e) => e.id == event.id);
-      print('🔍 Finding event ${event.id} in local events...');
-      print('🔍 Found at index: $index');
-
       if (index != -1) {
-        print('🔄 Replacing event at index $index');
-        print(
-            '   Old: ${_localEvents[index].title} at ${AppDateUtils.formatTime(_localEvents[index].startTime)}');
-        print(
-            '   New: ${updatedEvent.title} at ${AppDateUtils.formatTime(updatedEvent.startTime)}');
-
-        // ✅ MINIMAL CHANGE: Just replace event without creating new list
+        print('🔄 Updating local event at index $index');
         _localEvents[index] = updatedEvent;
         _localEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
-
-        print('✅ Local event updated: ${updatedEvent.title} now at $newTime');
-
-        // Debug: Print all events after update
-        print('📋 Local events AFTER move (${_localEvents.length}):');
-        for (int i = 0; i < _localEvents.length; i++) {
-          final e = _localEvents[i];
-          print(
-              '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
-        }
-      } else {
-        print('❌ ERROR: Event not found in local events!');
+        print('✅ Local event updated immediately');
       }
     });
 
-    // Show success message immediately
+    // ✅ STEP 5: Show success message with undo option
     _showSmartSnackBar(
-      message: '${event.title} berhasil dipindah',
+      message:
+          '${event.title} berhasil dipindah ke ${AppDateUtils.formatTime(newTime)}',
       backgroundColor: Colors.green,
       duration: const Duration(seconds: 5),
       actionLabel: 'BATALKAN',
@@ -437,7 +429,12 @@ class _DayViewPageState extends State<DayViewPage> {
       notificationId: 'moved_${event.id}_${newTime.millisecondsSinceEpoch}',
     );
 
-    // ✅ CRITICAL: Unblock external updates after delay
+    // ✅ STEP 6: Background sync ke server
+    context.read<CalendarBloc>().add(
+          calendar_events.UpdateEvent(updatedEvent),
+        );
+
+    // ✅ STEP 7: Unblock external updates after delay
     Timer(const Duration(seconds: 3), () {
       if (mounted) {
         setState(() {
@@ -445,27 +442,16 @@ class _DayViewPageState extends State<DayViewPage> {
         });
         print('🔓 External updates UNBLOCKED');
 
-        // Debug: Print events after unblock
-        print('📋 Local events AFTER unblock (${_localEvents.length}):');
-        for (int i = 0; i < _localEvents.length; i++) {
-          final e = _localEvents[i];
-          print(
-              '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
-        }
+        // Quiet refresh untuk sync dengan server
+        _refreshEventsQuietly();
       }
     });
 
-    // Background sync (akan di-ignore karena updates blocked)
-    context.read<CalendarBloc>().add(
-          calendar_events.UpdateEvent(updatedEvent),
-        );
-
-    print(
-        '✅ Move event completed - local state updated, external updates blocked');
+    print('✅ Move event completed - UI updated immediately');
     print('===== MOVE EVENT END =====');
   }
 
-  // ✅ SIMPLE LOCAL EVENT MANAGEMENT
+  // ✅ LOCAL EVENT MANAGEMENT
   void _addEventToLocal(CalendarEvent newEvent) {
     setState(() {
       if (AppDateUtils.isSameDay(newEvent.startTime, _selectedDate) ||
@@ -552,7 +538,24 @@ class _DayViewPageState extends State<DayViewPage> {
     });
   }
 
-  // ✅ EXISTING METHODS (unchanged)
+  // ✅ FIX 3: TIME SLOT TAP - Gunakan jam bulat, tidak menit
+  void _createEventAtTime(DateTime time) {
+    // ✅ Round ke jam terdekat
+    final roundedHour = time.hour;
+    final roundedTime = DateTime(
+      time.year,
+      time.month,
+      time.day,
+      roundedHour,
+      0, // ✅ Selalu gunakan menit 00
+    );
+
+    print('⏰ Time slot tapped: ${AppDateUtils.formatTime(time)}');
+    print('⏰ Rounded to: ${AppDateUtils.formatTime(roundedTime)}');
+
+    _navigateToAddEvent(roundedTime);
+  }
+
   void _navigateToAddEvent([DateTime? time]) {
     _dismissCurrentSnackBar();
 
@@ -562,7 +565,7 @@ class _DayViewPageState extends State<DayViewPage> {
           _selectedDate.month,
           _selectedDate.day,
           DateTime.now().hour,
-          DateTime.now().minute,
+          0, // ✅ Default ke menit 00
         );
 
     Navigator.push(
@@ -570,7 +573,11 @@ class _DayViewPageState extends State<DayViewPage> {
       MaterialPageRoute(
         builder: (context) => AddEventPage(initialDate: eventTime),
       ),
-    );
+    ).then((_) {
+      // ✅ FIX 2: Auto refresh saat kembali dari add event
+      print('🔙 Returned from add event - refreshing');
+      _refreshEventsQuietly();
+    });
   }
 
   void _showEventDetails(CalendarEvent event) {
@@ -690,7 +697,11 @@ class _DayViewPageState extends State<DayViewPage> {
                                 existingEvent: event,
                               ),
                             ),
-                          );
+                          ).then((_) {
+                            // ✅ FIX 2: Auto refresh saat kembali dari edit
+                            print('🔙 Returned from edit event - refreshing');
+                            _refreshEventsQuietly();
+                          });
                         },
                         icon: const Icon(Icons.edit),
                         label: const Text('Edit'),
@@ -736,10 +747,6 @@ class _DayViewPageState extends State<DayViewPage> {
         ),
       ],
     );
-  }
-
-  void _createEventAtTime(DateTime time) {
-    _navigateToAddEvent(time);
   }
 
   void _deleteEvent(CalendarEvent event) {
