@@ -1,5 +1,5 @@
 // lib/features/calendar/presentation/widgets/date_picker_widget.dart
-// MENGGUNAKAN MonthViewWidget ASLI dengan parameter untuk disable popup
+// FIXED VERSION - Overlay GestureDetector di atas MonthViewWidget untuk auto-close
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -79,6 +79,54 @@ class _DatePickerWidgetState extends State<DatePickerWidget> {
     }
   }
 
+  // ✅ Calculate which date was tapped based on position
+  DateTime? _getDateFromPosition(Offset localPosition, Size size) {
+    try {
+      // MonthViewWidget structure:
+      // - Weekday headers (height: ~40px)
+      // - Grid 6x7 (remaining height)
+
+      const weekdayHeaderHeight = 40.0; // Approximate header height
+
+      // Check if tap is in grid area (not header)
+      if (localPosition.dy <= weekdayHeaderHeight) return null;
+
+      // Calculate grid position
+      final gridY = localPosition.dy - weekdayHeaderHeight;
+      final gridHeight = size.height - weekdayHeaderHeight;
+
+      final cellWidth = size.width / 7;
+      final cellHeight = gridHeight / 6;
+
+      final col = (localPosition.dx / cellWidth).floor();
+      final row = (gridY / cellHeight).floor();
+
+      // Validate bounds
+      if (col < 0 || col >= 7 || row < 0 || row >= 6) return null;
+
+      // Calculate date index (0-41)
+      final index = row * 7 + col;
+
+      // Calculate actual date
+      final firstDayOfMonth =
+          DateTime(_currentMonth.year, _currentMonth.month, 1);
+      final firstWeekdayOffset = (firstDayOfMonth.weekday + 6) % 7;
+      final startDate =
+          firstDayOfMonth.subtract(Duration(days: firstWeekdayOffset));
+      final selectedDate = startDate.add(Duration(days: index));
+
+      print(
+          '🎯 Tap at: ${localPosition.dx.toInt()}, ${localPosition.dy.toInt()}');
+      print('📱 Grid: col=$col, row=$row, index=$index');
+      print('📅 Date: ${selectedDate.day}/${selectedDate.month}');
+
+      return selectedDate;
+    } catch (e) {
+      print('❌ Error calculating date from position: $e');
+      return null;
+    }
+  }
+
   void _onDateTap(DateTime date) {
     // ✅ Validasi tidak bisa pilih tanggal sebelum hari ini
     final today = DateTime.now();
@@ -86,8 +134,7 @@ class _DatePickerWidgetState extends State<DatePickerWidget> {
     final selectedStart = DateTime(date.year, date.month, date.day);
 
     if (selectedStart.isBefore(todayStart)) {
-      // Jangan lakukan apa-apa jika tanggal sebelum hari ini
-      return;
+      return; // Jangan lakukan apa-apa jika tanggal sebelum hari ini
     }
 
     // Cek apakah tanggal dalam range yang diizinkan
@@ -105,6 +152,9 @@ class _DatePickerWidgetState extends State<DatePickerWidget> {
 
     // Callback untuk notifikasi pemilihan tanggal
     widget.onDateSelected?.call(date);
+
+    // ✅ LANGSUNG TUTUP DIALOG SAAT PILIH TANGGAL
+    Navigator.pop(context, date);
   }
 
   @override
@@ -131,7 +181,7 @@ class _DatePickerWidgetState extends State<DatePickerWidget> {
             // ✅ HEADER sederhana - hanya nama bulan tahun
             _buildCleanHeader(),
 
-            // ✅ MonthViewWidget ASLI dengan parameter untuk disable popup
+            // ✅ MonthViewWidget dengan overlay GestureDetector
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -151,7 +201,7 @@ class _DatePickerWidgetState extends State<DatePickerWidget> {
                       DateTime.now().year,
                       DateTime.now().month + monthOffset,
                     );
-                    return _buildMonthViewWithSelection(month);
+                    return _buildMonthViewWithOverlay(month);
                   },
                 ),
               ),
@@ -191,19 +241,46 @@ class _DatePickerWidgetState extends State<DatePickerWidget> {
     );
   }
 
-  Widget _buildMonthViewWithSelection(DateTime month) {
+  Widget _buildMonthViewWithOverlay(DateTime month) {
     return Stack(
       children: [
-        // ✅ MonthViewWidget ASLI dengan parameter showEventPreview: false
+        // ✅ MonthViewWidget ASLI (tampilan sama persis)
         MonthViewWidget(
           month: month,
-          onDateTap: _onDateTap,
-          onDateLongPress: null, // Disable long press
-          showEventPreview:
-              false, // ✅ PARAMETER BARU untuk disable popup preview
+          onDateTap: (_) {}, // Empty callback - akan di-override oleh overlay
+          onDateLongPress: null,
         ),
 
-        // ✅ Selection overlay
+        // ✅ Transparent overlay untuk intercept taps
+        Positioned.fill(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return GestureDetector(
+                behavior:
+                    HitTestBehavior.translucent, // Penting untuk detect taps
+                onTapDown: (details) {
+                  // Calculate which date was tapped using LayoutBuilder size
+                  final date = _getDateFromPosition(
+                      details.localPosition, constraints.biggest);
+                  if (date != null) {
+                    print(
+                        '🎯 Tapped date: ${date.day}/${date.month}/${date.year}');
+                    _onDateTap(date);
+                  } else {
+                    print('❌ No valid date found for tap position');
+                  }
+                },
+                child: Container(
+                  color: Colors.transparent, // Transparent overlay
+                  width: double.infinity,
+                  height: double.infinity,
+                ),
+              );
+            },
+          ),
+        ),
+
+        // ✅ Selection overlay untuk highlight tanggal terpilih
         _buildSelectionOverlay(),
       ],
     );
@@ -314,8 +391,9 @@ class CleanSelectionPainter extends CustomPainter {
 
     if (selectedIndex == null) return;
 
-    final headerHeight = size.height * 0.08;
-    final gridHeight = size.height - headerHeight;
+    // ✅ Use same calculation as tap detection
+    const weekdayHeaderHeight = 40.0;
+    final gridHeight = size.height - weekdayHeaderHeight;
     final cellWidth = size.width / 7;
     final cellHeight = gridHeight / 6;
 
@@ -324,26 +402,26 @@ class CleanSelectionPainter extends CustomPainter {
 
     final cellRect = Rect.fromLTWH(
       col * cellWidth,
-      headerHeight + row * cellHeight,
+      weekdayHeaderHeight + row * cellHeight,
       cellWidth,
       cellHeight,
     );
 
-    // ✅ Background kuning muda untuk selected
+    // ✅ Background kuning muda untuk selected tapi lebih transparan
     final highlightPaint = Paint()
-      ..color = const Color(0xFFFFF9C4)
+      ..color = const Color(0xFFFFF9C4).withOpacity(0.7)
       ..style = PaintingStyle.fill;
 
     canvas.drawRect(cellRect, highlightPaint);
 
-    // ✅ Border biru muda
+    // ✅ Border biru muda tapi lebih tipis
     final borderPaint = Paint()
       ..color = const Color(0xFF4FC3F7)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
+      ..strokeWidth = 1.5;
 
     canvas.drawRect(
-      cellRect.deflate(1),
+      cellRect.deflate(0.5), // ✅ Deflate lebih kecil untuk border yang pas
       borderPaint,
     );
   }

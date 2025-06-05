@@ -605,9 +605,10 @@ class _AddEventPageState extends State<AddEventPage> {
     );
   }
 
+  // Method yang perlu di-update di AddEventPage untuk auto-adjust tanggal
   Future<void> _selectDateWithEnhancedPicker(bool isStart) async {
     final currentDate = isStart ? _startDate : _endDate;
-    // Logika _selectDateWithEnhancedPicker tetap sama
+
     final result = await showDialog<DateTime>(
       context: context,
       barrierDismissible: true,
@@ -630,6 +631,7 @@ class _AddEventPageState extends State<AddEventPage> {
       setState(() {
         if (isStart) {
           _startDate = result;
+          // ✅ AUTO-ADJUST: Jika tanggal mulai lebih besar dari tanggal selesai, sesuaikan tanggal selesai
           if (_endDate.isBefore(_startDate)) {
             _endDate = _startDate;
             // Jika waktu selesai sekarang sebelum waktu mulai di hari yang sama
@@ -640,7 +642,8 @@ class _AddEventPageState extends State<AddEventPage> {
               _endTime = TimeOfDay(
                   hour: (_startTime.hour + 1) % 24, minute: _startTime.minute);
             }
-            _showAdjustmentSnackBar('Tanggal selesai disesuaikan');
+            _showAdjustmentSnackBar(
+                'Tanggal selesai disesuaikan mengikuti tanggal mulai');
           }
         } else {
           // Memilih tanggal selesai
