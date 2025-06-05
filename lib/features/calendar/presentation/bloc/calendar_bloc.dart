@@ -1,5 +1,5 @@
 // lib/features/calendar/presentation/bloc/calendar_bloc.dart
-// UPDATED VERSION - Menggunakan forceSync untuk mencegah duplikasi
+// COMPLETELY SILENT VERSION untuk drag operations
 
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,7 +7,7 @@ import '../../../../core/error/failures.dart';
 import '../../../../core/error/error_handler.dart';
 import '../../domain/entities/calendar_event.dart' as domain;
 import '../../domain/usecases/calendar_usecases.dart';
-import '../../data/repositories/calendar_repository_impl.dart'; // ✅ TAMBAHAN IMPORT INI
+import '../../data/repositories/calendar_repository_impl.dart';
 import 'calendar_event.dart';
 import 'calendar_state.dart';
 
@@ -182,43 +182,41 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     }
   }
 
+  // ✅ COMPLETELY SILENT: Tidak emit apa-apa untuk drag operations
   Future<void> _onUpdateEvent(
     UpdateEvent event,
     Emitter<CalendarState> emit,
   ) async {
     try {
+      print('🔇 SILENT UPDATE: Processing ${event.event.title}');
+
       final result = await useCases.updateCalendarEvent(event.event);
 
       result.fold(
         (failure) {
+          print('❌ Silent update failed: ${failure.message}');
+          // ✅ ONLY emit error untuk critical failures
           if (!emit.isDone) {
             emit(CalendarError(message: failure.message));
           }
         },
         (updatedEvent) {
-          if (!emit.isDone) {
-            emit(EventUpdated(updatedEvent));
+          print('✅ Silent update completed: ${updatedEvent.title}');
 
-            // Update the event in the current list
-            if (state is CalendarLoaded) {
-              final currentState = state as CalendarLoaded;
-              final updatedEvents =
-                  currentState.events.map<domain.CalendarEvent>((e) {
-                return e.id == updatedEvent.id ? updatedEvent : e;
-              }).toList();
-              updatedEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
+          // ✅ CRITICAL: NO EMISSION WHATSOEVER
+          // UI sudah ter-handle di day view level dengan local events
+          // Background state akan di-update by repository secara internal
 
-              if (!emit.isDone) {
-                emit(currentState.copyWith(events: updatedEvents));
-              }
-            }
-          }
+          // ✅ COMPLETELY SILENT - tidak ada emit() sama sekali
+          print('🔇 Update completed silently - no state emission');
         },
       );
     } catch (e) {
       ErrorHandler.logError(e);
+      print('❌ Silent update error: $e');
+      // Only emit untuk critical errors
       if (!emit.isDone) {
-        emit(CalendarError(message: 'Gagal update event: ${e.toString()}'));
+        emit(CalendarError(message: 'Background sync failed: ${e.toString()}'));
       }
     }
   }
@@ -240,7 +238,7 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
           if (!emit.isDone) {
             emit(EventDeleted(event.eventId));
 
-            // Remove the event from the current list
+            // Update events list if currently loaded
             if (state is CalendarLoaded) {
               final currentState = state as CalendarLoaded;
               final updatedEvents = currentState.events
@@ -262,7 +260,7 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     }
   }
 
-  // ✅ UPDATED: Menggunakan forceSync untuk mencegah duplikasi
+  // ✅ Manual sync dengan forceSync
   Future<void> _onSyncWithGoogle(
     SyncWithGoogle event,
     Emitter<CalendarState> emit,
@@ -279,10 +277,8 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
       print(
           '🔄 Manual sync started for range: ${event.dateRange.startDate} to ${event.dateRange.endDate}');
 
-      // ✅ Gunakan repository langsung untuk forceSync
       final repository = useCases.authenticateGoogleCalendar.repository;
 
-      // Cast repository ke implementation untuk akses forceSync
       if (repository is CalendarRepositoryImpl) {
         final result = await repository.forceSync(event.dateRange);
 
@@ -320,7 +316,7 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
           },
         );
       } else {
-        // Fallback ke sync biasa jika tidak bisa cast
+        // Fallback sync
         final result = await useCases.syncGoogleCalendar(event.dateRange);
 
         await result.fold(
@@ -370,15 +366,12 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
     }
   }
 
-  // ✅ IMPROVED: Better error handling for authentication
   Future<void> _onAuthenticateGoogle(
     AuthenticateGoogle event,
     Emitter<CalendarState> emit,
   ) async {
     try {
       print('🔐 Starting Google authentication...');
-
-      // Show loading state
       emit(CalendarLoading());
 
       final result = await useCases.authenticateGoogleCalendar();
@@ -525,6 +518,9 @@ class CalendarBloc extends Bloc<CalendarEvent, CalendarState> {
       }
     }
   }
+
+  // ✅ Add mounted check for safety
+  bool get mounted => !isClosed;
 
   @override
   Future<void> close() {

@@ -1,5 +1,9 @@
 // lib/features/calendar/presentation/pages/day_view_page.dart
+// SIMPLE FIXED VERSION - Guaranteed no jumping
+
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/utils/date_utils.dart';
 import '../../domain/entities/calendar_event.dart';
@@ -36,6 +40,13 @@ class _DayViewPageState extends State<DayViewPage> {
   DateTime? _originalEndTime;
   bool _hasUndoData = false;
 
+  // ✅ SIMPLE LOCAL EVENTS - Ini satu-satunya source of truth
+  List<CalendarEvent> _localEvents = [];
+  bool _isLoadingEvents = false;
+
+  // ✅ CRITICAL: Flag untuk block external updates saat drag
+  bool _blockExternalUpdates = false;
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +69,11 @@ class _DayViewPageState extends State<DayViewPage> {
   }
 
   void _loadEventsForDate(DateTime date) {
+    setState(() {
+      _isLoadingEvents = true;
+      _blockExternalUpdates = false; // Allow updates saat load
+    });
+
     context.read<CalendarBloc>().add(
           calendar_events.LoadEventsForDate(date: date),
         );
@@ -68,7 +84,9 @@ class _DayViewPageState extends State<DayViewPage> {
 
     setState(() {
       _selectedDate = _selectedDate.add(Duration(days: dayOffset));
-      _savedScrollPosition = null;
+      _savedScrollPosition = null; // ✅ Only reset scroll when changing date
+      _localEvents = []; // Clear local events when changing date
+      _blockExternalUpdates = false; // Reset block
     });
     _loadEventsForDate(_selectedDate);
   }
@@ -152,6 +170,8 @@ class _DayViewPageState extends State<DayViewPage> {
                 setState(() {
                   _selectedDate = todayDate;
                   _savedScrollPosition = null;
+                  _localEvents = []; // Clear local events
+                  _blockExternalUpdates = false;
                 });
                 _loadEventsForDate(_selectedDate);
                 _pageController.animateToPage(
@@ -171,7 +191,11 @@ class _DayViewPageState extends State<DayViewPage> {
           ),
           IconButton(
             onPressed: () {
-              _savedScrollPosition = null;
+              // ✅ PRESERVE scroll position saat refresh
+              print(
+                  '🔄 Refreshing while preserving scroll position: $_savedScrollPosition');
+              _localEvents = []; // Clear local events untuk fresh load
+              _blockExternalUpdates = false;
               _loadEventsForDate(_selectedDate);
             },
             icon: const Icon(Icons.refresh),
@@ -181,6 +205,9 @@ class _DayViewPageState extends State<DayViewPage> {
       ),
       body: BlocListener<CalendarBloc, CalendarState>(
         listener: (context, state) {
+          print('📡 BlocListener received: ${state.runtimeType}');
+          print('🚧 Block external updates: $_blockExternalUpdates');
+
           if (state is CalendarError) {
             _showSmartSnackBar(
               message: state.message,
@@ -190,41 +217,92 @@ class _DayViewPageState extends State<DayViewPage> {
               notificationId: 'error_${state.message.hashCode}',
             );
           } else if (state is EventDeleted) {
+            print('📡 EventDeleted received');
             _showSmartSnackBar(
               message: 'Event berhasil dihapus',
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 2),
               notificationId: 'deleted_${state.eventId}',
             );
-          } else if (state is EventUpdated) {
-            _showSmartSnackBar(
-              message: '${state.event.title} berhasil dipindah',
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 5),
-              actionLabel: 'BATALKAN',
-              actionCallback: () => _undoMoveEvent(),
-              notificationId:
-                  'moved_${state.event.id}_${state.event.startTime.millisecondsSinceEpoch}',
-            );
-
-            Future.delayed(const Duration(milliseconds: 100), () {
-              if (mounted) {
-                _loadEventsForDate(_selectedDate);
-              }
-            });
+            if (!_blockExternalUpdates) {
+              _removeEventFromLocal(state.eventId);
+            } else {
+              print('🚧 BLOCKED EventDeleted update');
+            }
           } else if (state is EventCreated) {
+            print('📡 EventCreated received');
             _showSmartSnackBar(
               message: '${state.event.title} berhasil dibuat',
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 2),
               notificationId: 'created_${state.event.id}',
             );
+            if (!_blockExternalUpdates) {
+              _addEventToLocal(state.event);
+            } else {
+              print('🚧 BLOCKED EventCreated update');
+            }
+          } else if (state is CalendarLoaded) {
+            print(
+                '📡 CalendarLoaded received with ${state.events.length} events');
+            print('🚧 Block status: $_blockExternalUpdates');
 
-            Future.delayed(const Duration(milliseconds: 100), () {
-              if (mounted) {
-                _loadEventsForDate(_selectedDate);
+            // ✅ CRITICAL: Only update if external updates are NOT blocked
+            if (!_blockExternalUpdates) {
+              print('✅ Applying CalendarLoaded update');
+              setState(() {
+                _isLoadingEvents = false;
+                final newEvents = state.events.where((event) {
+                  return AppDateUtils.isSameDay(
+                          event.startTime, _selectedDate) ||
+                      (event.isMultiDay &&
+                          _selectedDate.isAfter(
+                            event.startTime.subtract(const Duration(days: 1)),
+                          ) &&
+                          _selectedDate.isBefore(
+                            event.endTime.add(const Duration(days: 1)),
+                          ));
+                }).toList();
+
+                print(
+                    '📋 Before update - Local events count: ${_localEvents.length}');
+                print('📋 New events from server: ${newEvents.length}');
+
+                _localEvents = newEvents;
+
+                print(
+                    '📋 After update - Local events count: ${_localEvents.length}');
+
+                // Debug: Print all local events
+                for (int i = 0; i < _localEvents.length; i++) {
+                  final e = _localEvents[i];
+                  print(
+                      '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
+                }
+              });
+              print(
+                  '✅ CalendarLoaded update applied - ${_localEvents.length} events');
+            } else {
+              print(
+                  '🚧 BLOCKED CalendarLoaded update - preserving ${_localEvents.length} local events');
+
+              // Debug: Print current local events
+              print('🔍 Current local events (preserved):');
+              for (int i = 0; i < _localEvents.length; i++) {
+                final e = _localEvents[i];
+                print(
+                    '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
               }
-            });
+            }
+          } else if (state is EventUpdated) {
+            print('📡 EventUpdated received for: ${state.event.title}');
+            print('🚧 Block status: $_blockExternalUpdates');
+            if (_blockExternalUpdates) {
+              print('🔕 EventUpdated BLOCKED - local state is source of truth');
+            } else {
+              print(
+                  '⚠️ EventUpdated received when NOT blocked - this might cause issues');
+            }
           }
         },
         child: GestureDetector(
@@ -241,40 +319,37 @@ class _DayViewPageState extends State<DayViewPage> {
               }
             }
           },
-          child: BlocBuilder<CalendarBloc, CalendarState>(
-            builder: (context, state) {
-              if (state is CalendarLoading) {
-                return const Center(child: CircularProgressIndicator());
-              }
+          child: _isLoadingEvents
+              ? const Center(child: CircularProgressIndicator())
+              : Builder(
+                  builder: (context) {
+                    // ✅ Debug: Monitor events passed to DayViewWidget
+                    print(
+                        '🎯 Building DayViewWidget with ${_localEvents.length} events:');
+                    for (int i = 0; i < _localEvents.length; i++) {
+                      final e = _localEvents[i];
+                      print(
+                          '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
+                    }
+                    print('📍 Current scroll position: $_savedScrollPosition');
 
-              List<CalendarEvent> events = [];
-              if (state is CalendarLoaded) {
-                events = state.events.where((event) {
-                  return AppDateUtils.isSameDay(
-                          event.startTime, _selectedDate) ||
-                      (event.isMultiDay &&
-                          _selectedDate.isAfter(
-                            event.startTime.subtract(const Duration(days: 1)),
-                          ) &&
-                          _selectedDate.isBefore(
-                            event.endTime.add(const Duration(days: 1)),
-                          ));
-                }).toList();
-              }
-
-              return DayViewWidget(
-                date: _selectedDate,
-                events: events,
-                onEventTap: _showEventDetails,
-                onTimeSlotTap: _createEventAtTime,
-                onEventMove: _moveEvent,
-                onScrollPositionChanged: (position) {
-                  _savedScrollPosition = position;
-                },
-                initialScrollPosition: _savedScrollPosition,
-              );
-            },
-          ),
+                    return DayViewWidget(
+                      date: _selectedDate,
+                      events:
+                          _localEvents, // ✅ Direct reference, no new list creation
+                      onEventTap: _showEventDetails,
+                      onTimeSlotTap: _createEventAtTime,
+                      onEventMove: _moveEvent,
+                      onScrollPositionChanged: (position) {
+                        // ✅ Always save scroll position
+                        _savedScrollPosition = position;
+                        print('📍 Scroll position saved: $position');
+                      },
+                      initialScrollPosition:
+                          _savedScrollPosition, // ✅ Restore saved position
+                    );
+                  },
+                ),
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -285,6 +360,199 @@ class _DayViewPageState extends State<DayViewPage> {
     );
   }
 
+  // ✅ SIMPLE MOVE EVENT - Block external updates dan update local immediately
+  void _moveEvent(CalendarEvent event, DateTime newTime) {
+    print('===== MOVE EVENT START =====');
+    print('🔄 Moving ${event.title} from ${event.startTime} to $newTime');
+
+    // ✅ CRITICAL: Save current scroll position BEFORE any updates
+    print('💾 Saving current scroll position: $_savedScrollPosition');
+
+    // Debug: Print current local events before
+    print('📋 Local events BEFORE move (${_localEvents.length}):');
+    for (int i = 0; i < _localEvents.length; i++) {
+      final e = _localEvents[i];
+      print(
+          '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
+    }
+
+    // ✅ CRITICAL: Block all external updates
+    setState(() {
+      _blockExternalUpdates = true;
+    });
+    print('🚧 External updates BLOCKED');
+
+    // Save undo data
+    _lastMovedEvent = event.copyWith();
+    _originalStartTime = event.startTime;
+    _originalEndTime = event.endTime;
+    _hasUndoData = true;
+
+    // Calculate new event
+    final duration = event.endTime.difference(event.startTime);
+    final updatedEvent = event.copyWith(
+      startTime: newTime,
+      endTime: newTime.add(duration),
+      lastModified: DateTime.now(),
+    );
+
+    // ✅ CRITICAL: Update local events immediately dengan MINIMAL rebuild
+    setState(() {
+      final index = _localEvents.indexWhere((e) => e.id == event.id);
+      print('🔍 Finding event ${event.id} in local events...');
+      print('🔍 Found at index: $index');
+
+      if (index != -1) {
+        print('🔄 Replacing event at index $index');
+        print(
+            '   Old: ${_localEvents[index].title} at ${AppDateUtils.formatTime(_localEvents[index].startTime)}');
+        print(
+            '   New: ${updatedEvent.title} at ${AppDateUtils.formatTime(updatedEvent.startTime)}');
+
+        // ✅ MINIMAL CHANGE: Just replace event without creating new list
+        _localEvents[index] = updatedEvent;
+        _localEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
+
+        print('✅ Local event updated: ${updatedEvent.title} now at $newTime');
+
+        // Debug: Print all events after update
+        print('📋 Local events AFTER move (${_localEvents.length}):');
+        for (int i = 0; i < _localEvents.length; i++) {
+          final e = _localEvents[i];
+          print(
+              '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
+        }
+      } else {
+        print('❌ ERROR: Event not found in local events!');
+      }
+    });
+
+    // Show success message immediately
+    _showSmartSnackBar(
+      message: '${event.title} berhasil dipindah',
+      backgroundColor: Colors.green,
+      duration: const Duration(seconds: 5),
+      actionLabel: 'BATALKAN',
+      actionCallback: () => _undoMoveEvent(),
+      notificationId: 'moved_${event.id}_${newTime.millisecondsSinceEpoch}',
+    );
+
+    // ✅ CRITICAL: Unblock external updates after delay
+    Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _blockExternalUpdates = false;
+        });
+        print('🔓 External updates UNBLOCKED');
+
+        // Debug: Print events after unblock
+        print('📋 Local events AFTER unblock (${_localEvents.length}):');
+        for (int i = 0; i < _localEvents.length; i++) {
+          final e = _localEvents[i];
+          print(
+              '   [$i] ${e.title}: ${AppDateUtils.formatTime(e.startTime)} - ${AppDateUtils.formatTime(e.endTime)}');
+        }
+      }
+    });
+
+    // Background sync (akan di-ignore karena updates blocked)
+    context.read<CalendarBloc>().add(
+          calendar_events.UpdateEvent(updatedEvent),
+        );
+
+    print(
+        '✅ Move event completed - local state updated, external updates blocked');
+    print('===== MOVE EVENT END =====');
+  }
+
+  // ✅ SIMPLE LOCAL EVENT MANAGEMENT
+  void _addEventToLocal(CalendarEvent newEvent) {
+    setState(() {
+      if (AppDateUtils.isSameDay(newEvent.startTime, _selectedDate) ||
+          (newEvent.isMultiDay &&
+              _selectedDate.isAfter(
+                newEvent.startTime.subtract(const Duration(days: 1)),
+              ) &&
+              _selectedDate.isBefore(
+                newEvent.endTime.add(const Duration(days: 1)),
+              ))) {
+        _localEvents.add(newEvent);
+        _localEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
+        print('✅ Added new event ${newEvent.title} to local events');
+      }
+    });
+  }
+
+  void _removeEventFromLocal(String eventId) {
+    setState(() {
+      _localEvents.removeWhere((e) => e.id == eventId);
+      print('✅ Removed event $eventId from local events');
+    });
+  }
+
+  void _undoMoveEvent() {
+    if (!_hasUndoData ||
+        _lastMovedEvent == null ||
+        _originalStartTime == null ||
+        _originalEndTime == null) {
+      _showSmartSnackBar(
+        message: 'Tidak ada data untuk dibatalkan',
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 2),
+        notificationId: 'undo_failed',
+      );
+      return;
+    }
+
+    // Block external updates during undo
+    setState(() {
+      _blockExternalUpdates = true;
+    });
+
+    // Create event with original times
+    final originalEvent = _lastMovedEvent!.copyWith(
+      startTime: _originalStartTime!,
+      endTime: _originalEndTime!,
+      lastModified: DateTime.now(),
+    );
+
+    // Update local events immediately
+    setState(() {
+      final index = _localEvents.indexWhere((e) => e.id == originalEvent.id);
+      if (index != -1) {
+        _localEvents[index] = originalEvent;
+        _localEvents.sort((a, b) => a.startTime.compareTo(b.startTime));
+      }
+    });
+
+    // Background sync
+    context.read<CalendarBloc>().add(
+          calendar_events.UpdateEvent(originalEvent),
+        );
+
+    // Show success message
+    _showSmartSnackBar(
+      message: '${_lastMovedEvent!.title} dikembalikan ke posisi semula',
+      backgroundColor: Colors.orange,
+      duration: const Duration(seconds: 3),
+      notificationId: 'undo_success_${_lastMovedEvent!.id}',
+    );
+
+    // Clear undo data and unblock updates
+    Timer(const Duration(seconds: 1), () {
+      if (mounted) {
+        setState(() {
+          _lastMovedEvent = null;
+          _originalStartTime = null;
+          _originalEndTime = null;
+          _hasUndoData = false;
+          _blockExternalUpdates = false;
+        });
+      }
+    });
+  }
+
+  // ✅ EXISTING METHODS (unchanged)
   void _navigateToAddEvent([DateTime? time]) {
     _dismissCurrentSnackBar();
 
@@ -472,91 +740,6 @@ class _DayViewPageState extends State<DayViewPage> {
 
   void _createEventAtTime(DateTime time) {
     _navigateToAddEvent(time);
-  }
-
-  void _moveEvent(CalendarEvent event, DateTime newTime) {
-    // Simpan data undo SEBELUM update
-    _lastMovedEvent = CalendarEvent(
-      id: event.id,
-      title: event.title,
-      description: event.description,
-      startTime: event.startTime,
-      endTime: event.endTime,
-      location: event.location,
-      isAllDay: event.isAllDay,
-      color: event.color,
-      googleEventId: event.googleEventId,
-      attendees: event.attendees,
-      recurrence: event.recurrence,
-      isFromGoogle: event.isFromGoogle,
-      lastModified: event.lastModified,
-      createdBy: event.createdBy,
-      additionalData: event.additionalData,
-    );
-
-    _originalStartTime = event.startTime;
-    _originalEndTime = event.endTime;
-    _hasUndoData = true;
-
-    // Calculate new end time maintaining duration
-    final duration = event.endTime.difference(event.startTime);
-    final updatedEvent = event.copyWith(
-      startTime: newTime,
-      endTime: newTime.add(duration),
-      lastModified: DateTime.now(),
-    );
-
-    // Update via bloc
-    context.read<CalendarBloc>().add(
-          calendar_events.UpdateEvent(updatedEvent),
-        );
-  }
-
-  void _undoMoveEvent() {
-    if (!_hasUndoData ||
-        _lastMovedEvent == null ||
-        _originalStartTime == null ||
-        _originalEndTime == null) {
-      _showSmartSnackBar(
-        message: 'Tidak ada data untuk dibatalkan',
-        backgroundColor: Colors.orange,
-        duration: const Duration(seconds: 2),
-        notificationId: 'undo_failed',
-      );
-      return;
-    }
-
-    // Create event with original times
-    final originalEvent = _lastMovedEvent!.copyWith(
-      startTime: _originalStartTime!,
-      endTime: _originalEndTime!,
-      lastModified: DateTime.now(),
-    );
-
-    // Update via bloc
-    context.read<CalendarBloc>().add(
-          calendar_events.UpdateEvent(originalEvent),
-        );
-
-    // Show success message
-    _showSmartSnackBar(
-      message: '${_lastMovedEvent!.title} dikembalikan ke posisi semula',
-      backgroundColor: Colors.orange,
-      duration: const Duration(seconds: 3),
-      notificationId: 'undo_success_${_lastMovedEvent!.id}',
-    );
-
-    // Clear undo data
-    _clearUndoData();
-  }
-
-  void _clearUndoData() {
-    setState(() {
-      _lastMovedEvent = null;
-      _originalStartTime = null;
-      _originalEndTime = null;
-      _hasUndoData = false;
-    });
   }
 
   void _deleteEvent(CalendarEvent event) {

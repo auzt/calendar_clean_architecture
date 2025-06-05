@@ -115,7 +115,7 @@ class _AddEventPageState extends State<AddEventPage> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(_isEditing ? 'Edit Event' : 'Tambah Event'),
-        backgroundColor: Colors.white,
+        backgroundColor: const Color.fromARGB(255, 89, 6, 223),
         elevation: 1,
         actions: [
           BlocListener<CalendarBloc, CalendarState>(
