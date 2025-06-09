@@ -302,7 +302,7 @@ class SimplifiedSelectionPainter extends CustomPainter {
     // Tapi visual tidak sesuai, berarti ada offset yang perlu diadjust
 
     const weekdayHeaderHeight = 40.0;
-    final gridAvailableHeight = size.height - weekdayHeaderHeight;
+    final gridAvailableHeight = (size.height - 60) - weekdayHeaderHeight;
     final cellWidth = size.width / 7.0;
     final cellHeight = gridAvailableHeight / 6.0;
 
